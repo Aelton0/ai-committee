@@ -1,0 +1,176 @@
+{
+  "$defs": {
+    "TradeOffDimension": {
+      "additionalProperties": false,
+      "description": "Comparative evaluation of a single architectural or strategic trade-off dimension.",
+      "properties": {
+        "dimension": {
+          "minLength": 1,
+          "title": "Dimension",
+          "type": "string"
+        },
+        "option_a": {
+          "minLength": 1,
+          "title": "Option A",
+          "type": "string"
+        },
+        "option_b": {
+          "minLength": 1,
+          "title": "Option B",
+          "type": "string"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        }
+      },
+      "required": [
+        "dimension",
+        "option_a",
+        "option_b"
+      ],
+      "title": "TradeOffDimension",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Impartial consolidation of the deliberation produced by the Facilitador.\n\nExplicitly excludes any 'recommended_solution' or winner choice, as the Facilitador\ndoes not hold decision-making authority.",
+  "properties": {
+    "artifact_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Artifact Id",
+      "type": "string"
+    },
+    "version": {
+      "default": 1,
+      "exclusiveMinimum": 0,
+      "title": "Version",
+      "type": "integer"
+    },
+    "supersedes": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Supersedes"
+    },
+    "content_hash": {
+      "anyOf": [
+        {
+          "description": "SHA-256 hash string optionally prefixed with sha256:",
+          "pattern": "^(sha256:)?[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Content Hash"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "facilitator_role": {
+      "const": "FACILITATOR",
+      "default": "FACILITATOR",
+      "title": "Facilitator Role",
+      "type": "string"
+    },
+    "consolidated_facts": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Consolidated Facts",
+      "type": "array"
+    },
+    "consolidated_constraints": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Consolidated Constraints",
+      "type": "array"
+    },
+    "consolidated_assumptions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Consolidated Assumptions",
+      "type": "array"
+    },
+    "consolidated_unknowns": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Consolidated Unknowns",
+      "type": "array"
+    },
+    "consensus_points": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Consensus Points",
+      "type": "array"
+    },
+    "divergence_points": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Divergence Points",
+      "type": "array"
+    },
+    "arguments_by_alternative": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "description": "Keyed by alternative identifier (e.g. 'PROPOSAL_A', 'PROPOSAL_B')",
+      "title": "Arguments By Alternative",
+      "type": "object"
+    },
+    "unresolved_risks": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Unresolved Risks",
+      "type": "array"
+    },
+    "trade_offs": {
+      "items": {
+        "$ref": "#/$defs/TradeOffDimension"
+      },
+      "title": "Trade Offs",
+      "type": "array"
+    },
+    "open_questions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Open Questions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "artifact_id"
+  ],
+  "title": "DeliberationSynthesis",
+  "type": "object"
+}

@@ -1,0 +1,44 @@
+{
+  "additionalProperties": false,
+  "description": "Human aborts the deliberation immediately.",
+  "properties": {
+    "intervention_id": {
+      "format": "uuid",
+      "title": "Intervention Id",
+      "type": "string"
+    },
+    "session_id": {
+      "format": "uuid",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "actor_role": {
+      "const": "HUMAN_USER",
+      "default": "HUMAN_USER",
+      "title": "Actor Role",
+      "type": "string"
+    },
+    "intervention_type": {
+      "const": "USER_ABORT",
+      "default": "USER_ABORT",
+      "title": "Intervention Type",
+      "type": "string"
+    },
+    "reason": {
+      "minLength": 3,
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_id",
+    "reason"
+  ],
+  "title": "UserAbortCommand",
+  "type": "object"
+}

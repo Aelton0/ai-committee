@@ -1,0 +1,77 @@
+{
+  "$defs": {
+    "AssumptionContestAction": {
+      "description": "Action requested when contesting an assumption.",
+      "enum": [
+        "REJECT",
+        "MODIFY"
+      ],
+      "title": "AssumptionContestAction",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Human contests or modifies a working assumption.",
+  "properties": {
+    "intervention_id": {
+      "format": "uuid",
+      "title": "Intervention Id",
+      "type": "string"
+    },
+    "session_id": {
+      "format": "uuid",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "actor_role": {
+      "const": "HUMAN_USER",
+      "default": "HUMAN_USER",
+      "title": "Actor Role",
+      "type": "string"
+    },
+    "intervention_type": {
+      "const": "USER_CONTEST_ASSUMPTION",
+      "default": "USER_CONTEST_ASSUMPTION",
+      "title": "Intervention Type",
+      "type": "string"
+    },
+    "assumption_id": {
+      "minLength": 1,
+      "title": "Assumption Id",
+      "type": "string"
+    },
+    "action": {
+      "$ref": "#/$defs/AssumptionContestAction"
+    },
+    "justification": {
+      "minLength": 5,
+      "title": "Justification",
+      "type": "string"
+    },
+    "new_description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "New Description"
+    }
+  },
+  "required": [
+    "session_id",
+    "assumption_id",
+    "action",
+    "justification"
+  ],
+  "title": "UserContestAssumptionCommand",
+  "type": "object"
+}

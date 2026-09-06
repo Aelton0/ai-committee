@@ -1,0 +1,300 @@
+{
+  "$defs": {
+    "AcceptedRisk": {
+      "additionalProperties": false,
+      "description": "Residual risk acknowledged and accepted in the final decision.",
+      "properties": {
+        "risk": {
+          "minLength": 3,
+          "title": "Risk",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "mitigation": {
+          "minLength": 3,
+          "title": "Mitigation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "risk",
+        "severity",
+        "mitigation"
+      ],
+      "title": "AcceptedRisk",
+      "type": "object"
+    },
+    "Confidence": {
+      "description": "Confidence levels for assessments and recommendations.",
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH"
+      ],
+      "title": "Confidence",
+      "type": "string"
+    },
+    "DecisionStatus": {
+      "description": "Status outcomes for a DecisionRecord.",
+      "enum": [
+        "RECOMMENDED",
+        "INSUFFICIENT_EVIDENCE",
+        "ACCEPTED_BY_USER",
+        "REJECTED_BY_USER",
+        "OBSOLETE"
+      ],
+      "title": "DecisionStatus",
+      "type": "string"
+    },
+    "RejectedAlternative": {
+      "additionalProperties": false,
+      "description": "Details and technical rationale for rejecting a considered alternative.",
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "rejection_reason": {
+          "minLength": 5,
+          "title": "Rejection Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "rejection_reason"
+      ],
+      "title": "RejectedAlternative",
+      "type": "object"
+    },
+    "ReviewTrigger": {
+      "additionalProperties": false,
+      "description": "Measurable threshold or qualitative condition triggering re-evaluation.",
+      "properties": {
+        "condition": {
+          "minLength": 5,
+          "title": "Condition",
+          "type": "string"
+        },
+        "metric_threshold": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metric Threshold"
+        },
+        "trigger_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Trigger Type"
+        }
+      },
+      "required": [
+        "condition"
+      ],
+      "title": "ReviewTrigger",
+      "type": "object"
+    },
+    "Severity": {
+      "description": "Severity classification for risks, vulnerabilities, and assumptions.",
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "CRITICAL"
+      ],
+      "title": "Severity",
+      "type": "string"
+    },
+    "TradeOffContract": {
+      "additionalProperties": false,
+      "description": "Explicitly acknowledged trade-off contracted by the decision.",
+      "properties": {
+        "gain": {
+          "minLength": 3,
+          "title": "Gain",
+          "type": "string"
+        },
+        "sacrifice": {
+          "minLength": 3,
+          "title": "Sacrifice",
+          "type": "string"
+        }
+      },
+      "required": [
+        "gain",
+        "sacrifice"
+      ],
+      "title": "TradeOffContract",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Formal recommendation dossier formulated by the Decisor.\n\nMandates rigorous trade-offs and review triggers for RECOMMENDED status,\nand forbids false winners when status is INSUFFICIENT_EVIDENCE.",
+  "properties": {
+    "artifact_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Artifact Id",
+      "type": "string"
+    },
+    "version": {
+      "default": 1,
+      "exclusiveMinimum": 0,
+      "title": "Version",
+      "type": "integer"
+    },
+    "supersedes": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Supersedes"
+    },
+    "content_hash": {
+      "anyOf": [
+        {
+          "description": "SHA-256 hash string optionally prefixed with sha256:",
+          "pattern": "^(sha256:)?[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Content Hash"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "decisor_role": {
+      "const": "DECISOR",
+      "default": "DECISOR",
+      "title": "Decisor Role",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/DecisionStatus"
+    },
+    "recommendation": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Recommendation"
+    },
+    "chosen_alternative": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Chosen Alternative"
+    },
+    "rejected_alternatives": {
+      "items": {
+        "$ref": "#/$defs/RejectedAlternative"
+      },
+      "title": "Rejected Alternatives",
+      "type": "array"
+    },
+    "rationale": {
+      "description": "Comprehensive rationale of the decision",
+      "minLength": 10,
+      "title": "Rationale",
+      "type": "string"
+    },
+    "trade_offs": {
+      "items": {
+        "$ref": "#/$defs/TradeOffContract"
+      },
+      "title": "Trade Offs",
+      "type": "array"
+    },
+    "accepted_risks": {
+      "items": {
+        "$ref": "#/$defs/AcceptedRisk"
+      },
+      "title": "Accepted Risks",
+      "type": "array"
+    },
+    "technical_debt": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Technical Debt",
+      "type": "array"
+    },
+    "operational_debt": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Operational Debt",
+      "type": "array"
+    },
+    "critical_assumptions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Critical Assumptions",
+      "type": "array"
+    },
+    "review_triggers": {
+      "items": {
+        "$ref": "#/$defs/ReviewTrigger"
+      },
+      "title": "Review Triggers",
+      "type": "array"
+    },
+    "confidence": {
+      "$ref": "#/$defs/Confidence"
+    },
+    "information_that_could_change_decision": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Information That Could Change Decision",
+      "type": "array"
+    }
+  },
+  "required": [
+    "artifact_id",
+    "status",
+    "rationale",
+    "confidence"
+  ],
+  "title": "DecisionRecord",
+  "type": "object"
+}

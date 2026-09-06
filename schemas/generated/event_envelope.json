@@ -1,0 +1,129 @@
+{
+  "$defs": {
+    "CommitteeRole": {
+      "description": "Roles participating in the AI Committee deliberation.",
+      "enum": [
+        "FACILITATOR",
+        "ARCHITECT",
+        "PRAGMATIST",
+        "AUDITOR_SRE",
+        "DECISOR",
+        "MENTOR",
+        "HUMAN_USER",
+        "SYSTEM"
+      ],
+      "title": "CommitteeRole",
+      "type": "string"
+    },
+    "EventType": {
+      "description": "Catalog of formal events emitted within the deliberation engine.",
+      "enum": [
+        "SESSION_CREATED",
+        "QUESTION_RAISED",
+        "USER_RESPONDED",
+        "CONTEXT_VALIDATED",
+        "PROPOSAL_CREATED",
+        "AUDIT_COMPLETED",
+        "PHASE_ROLLBACK",
+        "DEFENSE_SUBMITTED",
+        "SYNTHESIS_CREATED",
+        "DECISION_RECORDED",
+        "DECISION_FAILED",
+        "LEARNING_REPORT_CREATED",
+        "USER_OVERRIDE",
+        "SESSION_CANCELLED",
+        "CRITICAL_ERROR"
+      ],
+      "title": "EventType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Canonical message envelope for all events in the AI Committee deliberation engine.",
+  "properties": {
+    "event_id": {
+      "format": "uuid",
+      "title": "Event Id",
+      "type": "string"
+    },
+    "event_type": {
+      "$ref": "#/$defs/EventType"
+    },
+    "session_id": {
+      "format": "uuid",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "correlation_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Correlation Id"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "actor": {
+      "$ref": "#/$defs/CommitteeRole"
+    },
+    "artifact_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Artifact Id"
+    },
+    "artifact_version": {
+      "anyOf": [
+        {
+          "pattern": "^v[0-9]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Artifact Version"
+    },
+    "content_hash": {
+      "anyOf": [
+        {
+          "description": "SHA-256 hash string optionally prefixed with sha256:",
+          "pattern": "^(sha256:)?[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Content Hash"
+    },
+    "payload": {
+      "title": "Payload"
+    }
+  },
+  "required": [
+    "event_type",
+    "session_id",
+    "actor",
+    "payload"
+  ],
+  "title": "EventEnvelope",
+  "type": "object"
+}

@@ -1,0 +1,543 @@
+{
+  "$defs": {
+    "Assumption": {
+      "additionalProperties": false,
+      "description": "Working hypothesis adopted provisionally to proceed with the analysis.",
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "rationale": {
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "risk_level": {
+          "$ref": "#/$defs/Severity",
+          "default": "MEDIUM"
+        }
+      },
+      "required": [
+        "id",
+        "description",
+        "rationale"
+      ],
+      "title": "Assumption",
+      "type": "object"
+    },
+    "BudgetContext": {
+      "additionalProperties": false,
+      "description": "Budgetary bounds and infrastructure spending limits.",
+      "properties": {
+        "max_monthly_budget": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Monthly Budget"
+        },
+        "currency": {
+          "default": "USD",
+          "title": "Currency",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        }
+      },
+      "title": "BudgetContext",
+      "type": "object"
+    },
+    "CommitteeRole": {
+      "description": "Roles participating in the AI Committee deliberation.",
+      "enum": [
+        "FACILITATOR",
+        "ARCHITECT",
+        "PRAGMATIST",
+        "AUDITOR_SRE",
+        "DECISOR",
+        "MENTOR",
+        "HUMAN_USER",
+        "SYSTEM"
+      ],
+      "title": "CommitteeRole",
+      "type": "string"
+    },
+    "Constraint": {
+      "additionalProperties": false,
+      "description": "Hard boundary or limitation that cannot be violated without formal approval.",
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/ConstraintType",
+          "default": "OTHER"
+        },
+        "negotiable": {
+          "default": false,
+          "title": "Negotiable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "description"
+      ],
+      "title": "Constraint",
+      "type": "object"
+    },
+    "ConstraintType": {
+      "description": "Categorization of hard and soft constraints.",
+      "enum": [
+        "BUDGET",
+        "DEADLINE",
+        "STACK",
+        "REGULATORY",
+        "TEAM",
+        "OPERATIONAL",
+        "OTHER"
+      ],
+      "title": "ConstraintType",
+      "type": "string"
+    },
+    "Fact": {
+      "additionalProperties": false,
+      "description": "Objective, verified piece of information provided or validated by the user.",
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "source": {
+          "description": "Source of the verified fact",
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "verified_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verified At"
+        }
+      },
+      "required": [
+        "id",
+        "description",
+        "source"
+      ],
+      "title": "Fact",
+      "type": "object"
+    },
+    "OpenQuestion": {
+      "additionalProperties": false,
+      "description": "Question directed to the user or an external source to clarify a missing requirement.",
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "question": {
+          "minLength": 1,
+          "title": "Question",
+          "type": "string"
+        },
+        "target_role": {
+          "$ref": "#/$defs/CommitteeRole",
+          "default": "HUMAN_USER"
+        },
+        "why_critical": {
+          "minLength": 1,
+          "title": "Why Critical",
+          "type": "string"
+        },
+        "answer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Answer"
+        },
+        "answered_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Answered At"
+        }
+      },
+      "required": [
+        "id",
+        "question",
+        "why_critical"
+      ],
+      "title": "OpenQuestion",
+      "type": "object"
+    },
+    "OperationalContext": {
+      "additionalProperties": false,
+      "description": "Operational parameters, current infrastructure, and SLAs.",
+      "properties": {
+        "current_infrastructure": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Current Infrastructure",
+          "type": "array"
+        },
+        "sla_requirements": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sla Requirements"
+        },
+        "peak_traffic": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Peak Traffic"
+        }
+      },
+      "title": "OperationalContext",
+      "type": "object"
+    },
+    "Severity": {
+      "description": "Severity classification for risks, vulnerabilities, and assumptions.",
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "CRITICAL"
+      ],
+      "title": "Severity",
+      "type": "string"
+    },
+    "TeamContext": {
+      "additionalProperties": false,
+      "description": "Information regarding the team composition and capability.",
+      "properties": {
+        "team_size": {
+          "minimum": 0,
+          "title": "Team Size",
+          "type": "integer"
+        },
+        "skill_level": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Skill Level"
+        },
+        "constraints": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Constraints",
+          "type": "array"
+        }
+      },
+      "required": [
+        "team_size"
+      ],
+      "title": "TeamContext",
+      "type": "object"
+    },
+    "TimeContext": {
+      "additionalProperties": false,
+      "description": "Schedule and deadline parameters.",
+      "properties": {
+        "deadline": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deadline"
+        },
+        "expected_duration": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Duration"
+        },
+        "milestone_notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Milestone Notes",
+          "type": "array"
+        }
+      },
+      "title": "TimeContext",
+      "type": "object"
+    },
+    "Unknown": {
+      "additionalProperties": false,
+      "description": "Critical information needed that is currently absent or unknowable.",
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "impact_if_adverse": {
+          "$ref": "#/$defs/Severity",
+          "default": "HIGH"
+        },
+        "potential_resolution": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Potential Resolution"
+        }
+      },
+      "required": [
+        "id",
+        "description"
+      ],
+      "title": "Unknown",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Formal framing of the problem produced by the Facilitador in Phase 0.\n\nStrictly separates facts from premises and unknowns.",
+  "properties": {
+    "artifact_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Artifact Id",
+      "type": "string"
+    },
+    "version": {
+      "default": 1,
+      "exclusiveMinimum": 0,
+      "title": "Version",
+      "type": "integer"
+    },
+    "supersedes": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Supersedes"
+    },
+    "content_hash": {
+      "anyOf": [
+        {
+          "description": "SHA-256 hash string optionally prefixed with sha256:",
+          "pattern": "^(sha256:)?[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Content Hash"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "problem": {
+      "description": "High-level description of the problem",
+      "minLength": 5,
+      "title": "Problem",
+      "type": "string"
+    },
+    "facts": {
+      "items": {
+        "$ref": "#/$defs/Fact"
+      },
+      "title": "Facts",
+      "type": "array"
+    },
+    "constraints": {
+      "items": {
+        "$ref": "#/$defs/Constraint"
+      },
+      "title": "Constraints",
+      "type": "array"
+    },
+    "assumptions": {
+      "items": {
+        "$ref": "#/$defs/Assumption"
+      },
+      "title": "Assumptions",
+      "type": "array"
+    },
+    "unknowns": {
+      "items": {
+        "$ref": "#/$defs/Unknown"
+      },
+      "title": "Unknowns",
+      "type": "array"
+    },
+    "open_questions": {
+      "items": {
+        "$ref": "#/$defs/OpenQuestion"
+      },
+      "title": "Open Questions",
+      "type": "array"
+    },
+    "success_criteria": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Success Criteria",
+      "type": "array"
+    },
+    "team_context": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TeamContext"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "budget_context": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BudgetContext"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "time_context": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TimeContext"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "operational_context": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OperationalContext"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "artifact_id",
+    "problem",
+    "success_criteria"
+  ],
+  "title": "ProblemContext",
+  "type": "object"
+}

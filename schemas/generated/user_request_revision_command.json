@@ -1,0 +1,59 @@
+{
+  "additionalProperties": false,
+  "description": "Human rejects a recommendation and requests a fresh deliberation with new constraints.",
+  "properties": {
+    "intervention_id": {
+      "format": "uuid",
+      "title": "Intervention Id",
+      "type": "string"
+    },
+    "session_id": {
+      "format": "uuid",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "actor_role": {
+      "const": "HUMAN_USER",
+      "default": "HUMAN_USER",
+      "title": "Actor Role",
+      "type": "string"
+    },
+    "intervention_type": {
+      "const": "USER_REQUEST_REVISION",
+      "default": "USER_REQUEST_REVISION",
+      "title": "Intervention Type",
+      "type": "string"
+    },
+    "target_decision_id": {
+      "minLength": 1,
+      "title": "Target Decision Id",
+      "type": "string"
+    },
+    "reason_for_rejection": {
+      "minLength": 5,
+      "title": "Reason For Rejection",
+      "type": "string"
+    },
+    "additional_constraints": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Additional Constraints",
+      "type": "array"
+    }
+  },
+  "required": [
+    "session_id",
+    "target_decision_id",
+    "reason_for_rejection",
+    "additional_constraints"
+  ],
+  "title": "UserRequestRevisionCommand",
+  "type": "object"
+}

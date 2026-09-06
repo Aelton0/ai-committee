@@ -1,0 +1,185 @@
+{
+  "$defs": {
+    "CritiqueResponse": {
+      "additionalProperties": false,
+      "description": "Structured answer to a specific finding raised by the Auditor.",
+      "properties": {
+        "finding_id": {
+          "description": "Reference to AuditFinding.id",
+          "minLength": 1,
+          "title": "Finding Id",
+          "type": "string"
+        },
+        "stance": {
+          "$ref": "#/$defs/DefenseStance"
+        },
+        "response": {
+          "description": "Technical response to the critique",
+          "minLength": 5,
+          "title": "Response",
+          "type": "string"
+        },
+        "rationale": {
+          "description": "Justification for the chosen stance",
+          "minLength": 5,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "proposed_modification": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Proposed Modification"
+        }
+      },
+      "required": [
+        "finding_id",
+        "stance",
+        "response",
+        "rationale"
+      ],
+      "title": "CritiqueResponse",
+      "type": "object"
+    },
+    "DefenseStance": {
+      "description": "Position taken by a proponent in response to an audit critique.",
+      "enum": [
+        "CONCEDED_WITH_REFINEMENT",
+        "CONTESTED",
+        "ACKNOWLEDGED_ACCEPTING_RISK"
+      ],
+      "title": "DefenseStance",
+      "type": "string"
+    },
+    "ProposalAction": {
+      "description": "Explicit declaration on whether the original proposal was maintained or modified.",
+      "enum": [
+        "MAINTAIN",
+        "MODIFY"
+      ],
+      "title": "ProposalAction",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Defense submitted by the Architect.",
+  "properties": {
+    "artifact_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Artifact Id",
+      "type": "string"
+    },
+    "version": {
+      "default": 1,
+      "exclusiveMinimum": 0,
+      "title": "Version",
+      "type": "integer"
+    },
+    "supersedes": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Supersedes"
+    },
+    "content_hash": {
+      "anyOf": [
+        {
+          "description": "SHA-256 hash string optionally prefixed with sha256:",
+          "pattern": "^(sha256:)?[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Content Hash"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "proponent_role": {
+      "const": "ARCHITECT",
+      "default": "ARCHITECT",
+      "title": "Proponent Role",
+      "type": "string"
+    },
+    "original_proposal_id": {
+      "minLength": 1,
+      "title": "Original Proposal Id",
+      "type": "string"
+    },
+    "original_proposal_version": {
+      "default": 1,
+      "exclusiveMinimum": 0,
+      "title": "Original Proposal Version",
+      "type": "integer"
+    },
+    "critique_responses": {
+      "items": {
+        "$ref": "#/$defs/CritiqueResponse"
+      },
+      "minItems": 1,
+      "title": "Critique Responses",
+      "type": "array"
+    },
+    "proposal_action": {
+      "$ref": "#/$defs/ProposalAction"
+    },
+    "persistent_disagreements": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Persistent Disagreements",
+      "type": "array"
+    },
+    "revised_proposal_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Revised Proposal Id"
+    },
+    "revised_proposal_version": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Revised Proposal Version"
+    }
+  },
+  "required": [
+    "artifact_id",
+    "original_proposal_id",
+    "critique_responses",
+    "proposal_action"
+  ],
+  "title": "ArchitectDefense",
+  "type": "object"
+}

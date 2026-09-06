@@ -1,0 +1,50 @@
+{
+  "additionalProperties": false,
+  "description": "Human answers an open question during Phase 0.",
+  "properties": {
+    "intervention_id": {
+      "format": "uuid",
+      "title": "Intervention Id",
+      "type": "string"
+    },
+    "session_id": {
+      "format": "uuid",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "actor_role": {
+      "const": "HUMAN_USER",
+      "default": "HUMAN_USER",
+      "title": "Actor Role",
+      "type": "string"
+    },
+    "intervention_type": {
+      "const": "USER_RESPOND",
+      "default": "USER_RESPOND",
+      "title": "Intervention Type",
+      "type": "string"
+    },
+    "question_id": {
+      "minLength": 1,
+      "title": "Question Id",
+      "type": "string"
+    },
+    "answer": {
+      "minLength": 1,
+      "title": "Answer",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_id",
+    "question_id",
+    "answer"
+  ],
+  "title": "UserRespondCommand",
+  "type": "object"
+}

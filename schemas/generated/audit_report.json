@@ -1,0 +1,219 @@
+{
+  "$defs": {
+    "AuditCategory": {
+      "description": "Specific categories evaluated by the Auditor/SRE.",
+      "enum": [
+        "security",
+        "reliability",
+        "operations",
+        "scalability",
+        "cost",
+        "complexity",
+        "single_points_of_failure",
+        "hidden_costs",
+        "fragile_assumptions",
+        "overengineering",
+        "underengineering"
+      ],
+      "title": "AuditCategory",
+      "type": "string"
+    },
+    "AuditFinding": {
+      "additionalProperties": false,
+      "description": "Individual critique identified during adversarial audit.",
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "target_proposal_id": {
+          "minLength": 1,
+          "title": "Target Proposal Id",
+          "type": "string"
+        },
+        "category": {
+          "$ref": "#/$defs/AuditCategory"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "title": {
+          "minLength": 3,
+          "title": "Title",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 5,
+          "title": "Description",
+          "type": "string"
+        },
+        "justification": {
+          "minLength": 5,
+          "title": "Justification",
+          "type": "string"
+        },
+        "impact": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Impact"
+        }
+      },
+      "required": [
+        "id",
+        "target_proposal_id",
+        "category",
+        "severity",
+        "title",
+        "description",
+        "justification"
+      ],
+      "title": "AuditFinding",
+      "type": "object"
+    },
+    "Severity": {
+      "description": "Severity classification for risks, vulnerabilities, and assumptions.",
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "CRITICAL"
+      ],
+      "title": "Severity",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Comprehensive adversarial audit attacking both proposals independently.",
+  "properties": {
+    "artifact_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Artifact Id",
+      "type": "string"
+    },
+    "version": {
+      "default": 1,
+      "exclusiveMinimum": 0,
+      "title": "Version",
+      "type": "integer"
+    },
+    "supersedes": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Supersedes"
+    },
+    "content_hash": {
+      "anyOf": [
+        {
+          "description": "SHA-256 hash string optionally prefixed with sha256:",
+          "pattern": "^(sha256:)?[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Content Hash"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "auditor_role": {
+      "const": "AUDITOR_SRE",
+      "default": "AUDITOR_SRE",
+      "title": "Auditor Role",
+      "type": "string"
+    },
+    "target_proposal_a_id": {
+      "minLength": 1,
+      "title": "Target Proposal A Id",
+      "type": "string"
+    },
+    "target_proposal_b_id": {
+      "minLength": 1,
+      "title": "Target Proposal B Id",
+      "type": "string"
+    },
+    "findings_proposal_a": {
+      "items": {
+        "$ref": "#/$defs/AuditFinding"
+      },
+      "title": "Findings Proposal A",
+      "type": "array"
+    },
+    "findings_proposal_b": {
+      "items": {
+        "$ref": "#/$defs/AuditFinding"
+      },
+      "title": "Findings Proposal B",
+      "type": "array"
+    },
+    "single_points_of_failure": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Single Points Of Failure",
+      "type": "array"
+    },
+    "hidden_costs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Hidden Costs",
+      "type": "array"
+    },
+    "fragile_assumptions": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Fragile Assumptions",
+      "type": "array"
+    },
+    "overengineering_risks": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Overengineering Risks",
+      "type": "array"
+    },
+    "underengineering_risks": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Underengineering Risks",
+      "type": "array"
+    },
+    "questions_for_proponents": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Questions For Proponents",
+      "type": "array"
+    }
+  },
+  "required": [
+    "artifact_id",
+    "target_proposal_a_id",
+    "target_proposal_b_id"
+  ],
+  "title": "AuditReport",
+  "type": "object"
+}

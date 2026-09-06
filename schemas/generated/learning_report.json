@@ -1,0 +1,238 @@
+{
+  "$defs": {
+    "LearningPathStep": {
+      "additionalProperties": false,
+      "description": "Structured step in the recommended self-study progression.",
+      "properties": {
+        "order": {
+          "minimum": 1,
+          "title": "Order",
+          "type": "integer"
+        },
+        "topic": {
+          "minLength": 1,
+          "title": "Topic",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 5,
+          "title": "Description",
+          "type": "string"
+        },
+        "reference": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LearningReference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "order",
+        "topic",
+        "description"
+      ],
+      "title": "LearningPathStep",
+      "type": "object"
+    },
+    "LearningReference": {
+      "additionalProperties": false,
+      "description": "Academic, industry, or textbook reference supporting study.",
+      "properties": {
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "author": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Author"
+        },
+        "url_or_citation": {
+          "minLength": 1,
+          "title": "Url Or Citation",
+          "type": "string"
+        },
+        "relevance_notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relevance Notes"
+        }
+      },
+      "required": [
+        "title",
+        "url_or_citation"
+      ],
+      "title": "LearningReference",
+      "type": "object"
+    },
+    "ObservedKnowledgeGap": {
+      "additionalProperties": false,
+      "description": "Knowledge gap grounded objectively on content observed during deliberation.\n\nExplicitly avoids psychological inferences or absolute assumptions about user capability.",
+      "properties": {
+        "observation": {
+          "description": "Objective observation grounded strictly on the content presented by the user",
+          "minLength": 5,
+          "title": "Observation",
+          "type": "string"
+        },
+        "context_evidence": {
+          "description": "Specific interaction or question from which the observation was derived",
+          "minLength": 5,
+          "title": "Context Evidence",
+          "type": "string"
+        },
+        "recommended_topic": {
+          "minLength": 1,
+          "title": "Recommended Topic",
+          "type": "string"
+        }
+      },
+      "required": [
+        "observation",
+        "context_evidence",
+        "recommended_topic"
+      ],
+      "title": "ObservedKnowledgeGap",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Pedagogical synthesis connecting practical choices with core computer science theory.",
+  "properties": {
+    "artifact_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Artifact Id",
+      "type": "string"
+    },
+    "version": {
+      "default": 1,
+      "exclusiveMinimum": 0,
+      "title": "Version",
+      "type": "integer"
+    },
+    "supersedes": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Supersedes"
+    },
+    "content_hash": {
+      "anyOf": [
+        {
+          "description": "SHA-256 hash string optionally prefixed with sha256:",
+          "pattern": "^(sha256:)?[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Content Hash"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "mentor_role": {
+      "const": "MENTOR",
+      "default": "MENTOR",
+      "title": "Mentor Role",
+      "type": "string"
+    },
+    "concepts": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Concepts",
+      "type": "array"
+    },
+    "concepts_required_to_understand_decision": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Concepts Required To Understand Decision",
+      "type": "array"
+    },
+    "observed_knowledge_gaps": {
+      "items": {
+        "$ref": "#/$defs/ObservedKnowledgeGap"
+      },
+      "title": "Observed Knowledge Gaps",
+      "type": "array"
+    },
+    "study_questions": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Study Questions",
+      "type": "array"
+    },
+    "learning_path": {
+      "items": {
+        "$ref": "#/$defs/LearningPathStep"
+      },
+      "minItems": 1,
+      "title": "Learning Path",
+      "type": "array"
+    },
+    "theory_to_practice_connections": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Theory To Practice Connections",
+      "type": "array"
+    },
+    "references": {
+      "items": {
+        "$ref": "#/$defs/LearningReference"
+      },
+      "minItems": 1,
+      "title": "References",
+      "type": "array"
+    }
+  },
+  "required": [
+    "artifact_id",
+    "concepts",
+    "concepts_required_to_understand_decision",
+    "study_questions",
+    "learning_path",
+    "theory_to_practice_connections",
+    "references"
+  ],
+  "title": "LearningReport",
+  "type": "object"
+}
