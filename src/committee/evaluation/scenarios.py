@@ -7,8 +7,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from schemas.audit import AuditCategory, AuditFinding, AuditReport
 from schemas.common import CommitteeRole, CommitteeState, Confidence, DecisionStatus, Severity
-from schemas.context import ProblemContext, Unknown
-from schemas.decision import DecisionRecord
+from schemas.context import Constraint, ConstraintType, Fact, OpenQuestion, ProblemContext, Unknown
+from schemas.decision import (
+    AcceptedRisk,
+    DecisionRecord,
+    RejectedAlternative,
+    ReviewTrigger,
+    TradeOffContract,
+)
 from schemas.defense import ArchitectDefense, PragmaticDefense
 from schemas.epistemic import (
     AssumptionItem,
@@ -32,7 +38,7 @@ from schemas.proposals import (
     ReversibilityAssessment,
     ReversibilityLevel,
 )
-from schemas.synthesis import DeliberationSynthesis
+from schemas.synthesis import DeliberationSynthesis, TradeOffDimension
 from src.committee.evaluation.models import EpistemicCriterion, EvaluationCriterion
 from src.committee.llm.mock import MockLLMProvider
 from src.committee.session import Session
@@ -429,6 +435,362 @@ def _build_scenario_14(session_id: UUID) -> Session:
     return session
 
 
+def _build_scenario_15(session_id: UUID) -> Session:
+    """Scenario 15 (Setor Azul - Subinformed): Missing critical volume, SLA, and queue info forces INSUFFICIENT_EVIDENCE."""
+    session = _build_base_session(session_id)
+    session.problem_statement = "Integração Setor Azul: captura de leads para CRM sem dados de volumetria, sem SLA de perda e sem mensageria confirmada."
+    session.problem_context = session.problem_context.model_copy(
+        update={
+            "problem": session.problem_statement,
+            "business_value_chain": [
+                "landing_page_lead",
+                "webhook_capture",
+                "persistence",
+                "crm_deal_creation",
+                "sales_revenue_attribution",
+            ],
+            "facts": [
+                Fact(id="F1", description="PostgreSQL 15 em produção para banco transacional", source="user_input"),
+            ],
+            "unknowns": [
+                Unknown(
+                    id="UNK-VOL-01",
+                    description="Volumetria de pico de leads por segundo desconhecida.",
+                    impact_if_adverse=Severity.CRITICAL,
+                    decision_relevance=Severity.CRITICAL,
+                    could_change_selected_alternative=True,
+                    blocking=True,
+                ),
+                Unknown(
+                    id="UNK-SLA-01",
+                    description="SLA de tolerância a indisponibilidade do CRM de destino desconhecido.",
+                    impact_if_adverse=Severity.HIGH,
+                    decision_relevance=Severity.HIGH,
+                    could_change_selected_alternative=True,
+                    blocking=True,
+                ),
+            ],
+        }
+    )
+    unk_items = [
+        UnknownItem(id="UNK-VOL-01", statement="Volumetria de pico de leads por segundo desconhecida.", impact_if_adverse=Severity.CRITICAL),
+        UnknownItem(id="UNK-SLA-01", statement="SLA de tolerância a indisponibilidade do CRM de destino desconhecido.", impact_if_adverse=Severity.HIGH),
+    ]
+    prop_a = session.proposals[CommitteeRole.ARCHITECT]
+    prop_b = session.proposals[CommitteeRole.PRAGMATIST]
+    session.proposals[CommitteeRole.ARCHITECT] = prop_a.model_copy(
+        update={"epistemic_section": prop_a.epistemic_section.model_copy(update={"unknowns": unk_items})}
+    )
+    session.proposals[CommitteeRole.PRAGMATIST] = prop_b.model_copy(
+        update={"epistemic_section": prop_b.epistemic_section.model_copy(update={"unknowns": unk_items})}
+    )
+    session.decision_record = session.decision_record.model_copy(
+        update={
+            "status": DecisionStatus.INSUFFICIENT_EVIDENCE,
+            "chosen_alternative": None,
+            "recommendation": None,
+            "rationale": "Evidência insuficiente: impossível recomendar entre Store-and-Forward e integração direta sem conhecer a volumetria de pico e o SLA de downtime do CRM.",
+            "information_that_could_change_decision": [
+                "Pico de volumetria de requisições por segundo (UNK-VOL-01)",
+                "Tolerância a indisponibilidade e SLA do CRM (UNK-SLA-01)",
+            ],
+            "uncertainties": ["UNK-VOL-01", "UNK-SLA-01"],
+            "confidence": Confidence.LOW,
+        }
+    )
+    return session
+
+
+def _build_scenario_16(session_id: UUID) -> Session:
+    """Scenario 16 (Setor Azul - Informed): Complete requirements enable genuine divergence, trade-off contract and traceable decision."""
+    session = _build_base_session(session_id)
+    session.problem_statement = "Integração Setor Azul: 200 leads/dia (pico 15 req/s), CRM com 2h downtime semanal, perda de lead = $500 CAC, prazo 4 semanas, budget $300/mês."
+    session.problem_context = session.problem_context.model_copy(
+        update={
+            "problem": session.problem_statement,
+            "business_value_chain": [
+                "landing_page_lead",
+                "webhook_capture",
+                "transactional_buffer",
+                "crm_deal_creation",
+                "sales_revenue_attribution",
+            ],
+            "facts": [
+                Fact(id="F1", description="PostgreSQL 15 single instance 16GB", source="User input"),
+                Fact(id="F2", description="Volume de 200 leads/dia com pico de 15 req/s em campanhas", source="user_response"),
+                Fact(id="F3", description="CRM de terceiros sofre indisponibilidade de até 2 horas semanais", source="user_response"),
+                Fact(id="F4", description="Perda de um único lead custa $500 de CAC para o negócio", source="user_response"),
+            ],
+            "constraints": [
+                Constraint(id="C1", description="Monthly budget under $300", type=ConstraintType.BUDGET, negotiable=False),
+                Constraint(id="C2", description="Delivery in 4 weeks", type=ConstraintType.DEADLINE, negotiable=False),
+            ],
+            "unknowns": [],
+        }
+    )
+    prop_a = session.proposals[CommitteeRole.ARCHITECT].model_copy(
+        update={
+            "artifact_id": "PROP-ARCH-001",
+            "title": "Transactional Outbox on Existing PostgreSQL with Asynchronous Worker",
+            "solution": "Persist incoming leads immediately into an outbox table in Postgres within the ingestion transaction, processed by an async worker with exponential backoff.",
+            "rationale": "Guarantees zero lead loss ($500 CAC risk) even during 2-hour CRM downtime by decoupling ingestion from external delivery.",
+            "benefits": ["Zero data loss for high-value leads", "No additional messaging infrastructure needed"],
+            "costs": CostEstimate(implementation_effort=EffortLevel.MEDIUM, infrastructure_cost_estimate="$0"),
+            "risks": ["Outbox table polling load on Postgres if index unoptimized"],
+            "complexity": Severity.MEDIUM,
+            "reversibility": ReversibilityAssessment(score=ReversibilityLevel.HIGH, rationale="Table schema easily retired"),
+            "future_implications": "Can upgrade to Debezium CDC if write throughput exceeds 1,000 req/s.",
+            "assumptions": ["Postgres transaction throughput handles 15 req/s easily"],
+            "invalidation_conditions": ["Postgres CPU reaches 85% utilization"],
+        }
+    )
+    prop_b = session.proposals[CommitteeRole.PRAGMATIST].model_copy(
+        update={
+            "artifact_id": "PROP-PRAG-001",
+            "title": "Direct FastAPI Webhook with In-Memory Retries and SQLite Fallback",
+            "solution": "FastAPI endpoint that attempts direct HTTP call to CRM, falling back to local SQLite buffer if CRM returns 5xx error.",
+            "rationale": "Delivers working MVP in 5 days with minimal boilerplate and near-zero ongoing operational overhead.",
+            "benefits": ["Ultra-fast time to market", "Minimal moving parts and no background daemon"],
+            "costs": CostEstimate(implementation_effort=EffortLevel.LOW, infrastructure_cost_estimate="$0"),
+            "risks": ["Process crash before SQLite flush loses active leads in memory"],
+            "complexity": Severity.LOW,
+            "reversibility": ReversibilityAssessment(score=ReversibilityLevel.HIGH, rationale="Simple endpoint"),
+            "future_implications": "Replace SQLite fallback with outbox when scale grows.",
+            "assumptions": ["CRM downtime is usually under 10 minutes, rarely 2 hours"],
+            "invalidation_conditions": ["Lead loss exceeds 1 lead per month"],
+        }
+    )
+    session.proposals[CommitteeRole.ARCHITECT] = prop_a
+    session.proposals[CommitteeRole.PRAGMATIST] = prop_b
+
+    finding_b = AuditFinding(
+        id="F-AUD-01",
+        target_proposal_id=prop_b.artifact_id,
+        severity=Severity.HIGH,
+        category=AuditCategory.RELIABILITY,
+        title="In-memory buffer risks lead loss",
+        description="In-memory buffer before SQLite flush risks losing $500 leads during unexpected worker restart.",
+        justification="Process crash during 2-hour CRM downtime empties volatile queue before persistence.",
+        impact="Direct financial loss of $500 CAC per dropped lead",
+    )
+    finding_a = AuditFinding(
+        id="F-AUD-02",
+        target_proposal_id=prop_a.artifact_id,
+        severity=Severity.MEDIUM,
+        category=AuditCategory.OPERATIONS,
+        title="Worker polling table lock contention",
+        description="Worker polling table without SKIP LOCKED can cause concurrency locks.",
+        justification="Multiple workers query outbox table concurrently causing deadlocks under high write load.",
+        impact="Temporary latency increase on database transactions",
+    )
+    session.audit_report = session.audit_report.model_copy(
+        update={
+            "target_proposal_a_id": prop_a.artifact_id,
+            "target_proposal_b_id": prop_b.artifact_id,
+            "findings_proposal_a": [finding_a],
+            "findings_proposal_b": [finding_b],
+        }
+    )
+
+    session.deliberation_synthesis = DeliberationSynthesis(
+        artifact_id="SYN-001",
+        version=1,
+        consensus_points=[
+            "Both agree existing PostgreSQL is sufficient without dedicated Kafka/RabbitMQ broker",
+            "Both acknowledge $500 CAC makes unbuffered lead drops unacceptable",
+        ],
+        divergence_points=[
+            "Transactional Outbox (guaranteed delivery) vs Direct HTTP with local fallback (fast time-to-market)",
+        ],
+        arguments_by_alternative={
+            "PROP-ARCH-001": ["Guaranteed zero data loss", "Resilient to 2h CRM downtime"],
+            "PROP-PRAG-001": ["5-day delivery", "Extremely simple codebase"],
+        },
+        trade_offs=[
+            TradeOffDimension(
+                dimension="Lead Preservation vs Time to Market",
+                option_a="Guaranteed lead persistence ($0 loss risk) with 2-3 weeks implementation",
+                option_b="5-day launch with non-zero loss risk if process dies during CRM downtime",
+                notes="Option A protects the core business revenue attribution chain.",
+            )
+        ],
+    )
+
+    session.decision_record = DecisionRecord(
+        artifact_id="DEC-001",
+        version=1,
+        status=DecisionStatus.RECOMMENDED,
+        chosen_alternative="PROP-ARCH-001",
+        recommendation="Adopt Transactional Outbox pattern on PostgreSQL with SKIP LOCKED polling worker.",
+        rejected_alternatives=[
+            RejectedAlternative(
+                name="PROP-PRAG-001",
+                rejection_reason="In-memory buffering poses unacceptable financial risk ($500 per lost lead) during CRM 2-hour outages.",
+            )
+        ],
+        rationale="The financial impact of lost leads ($500 CAC) and 2-hour CRM outages justifies the moderate effort of the Transactional Outbox over direct HTTP.",
+        trade_offs=[
+            TradeOffContract(
+                gain="Guaranteed zero lead loss and resilience against 2h CRM outages",
+                sacrifice="2 additional weeks of initial engineering effort",
+            )
+        ],
+        accepted_risks=[
+            AcceptedRisk(
+                risk="Outbox table growth during prolonged CRM outage",
+                severity=Severity.LOW,
+                mitigation="Worker cleanup cron purging dispatched events older than 7 days",
+            )
+        ],
+        review_triggers=[
+            ReviewTrigger(
+                condition="Throughput exceeds 500 leads/sec or Postgres CPU > 75%",
+                metric_threshold="500 leads/sec",
+                trigger_type="METRIC",
+            )
+        ],
+        confidence=Confidence.HIGH,
+        supported_by=["F1", "F2", "F3", "F4"],
+        depends_on=["C1", "C2"],
+    )
+    return session
+
+
+def _build_scenario_17(session_id: UUID) -> Session:
+    """Scenario 17 (Setor Azul - Contradictory): Conflicting user statements are recorded in conflicts rather than silently chosen."""
+    session = _build_base_session(session_id)
+    session.problem_statement = "Integração Setor Azul com premissas mutuamente excludentes: throughput de 50.000 req/s vs orçamento máximo de $50/mês."
+    session.problem_context = session.problem_context.model_copy(
+        update={
+            "problem": session.problem_statement,
+            "conflicts": [
+                "Conflito identificado: throughput de 50.000 req/s exige infraestrutura distribuída horizontalmente, incompatível com teto orçamentário de $50/mês.",
+            ],
+            "open_questions": [
+                OpenQuestion(
+                    id="Q-CONFLICT-01",
+                    question="Inconsistência entre throughput de 50.000 req/s e orçamento de $50/mês. Qual restrição deve ser ajustada?",
+                    why_critical="Conflitos entre requisitos inegociáveis devem ser formalmente resolvidos antes de liberar a divergência.",
+                    incorporated=False,
+                )
+            ],
+        }
+    )
+    return session
+
+
+def _build_scenario_18(session_id: UUID) -> Session:
+    """Scenario 18 (Legitimate Consensus): Minimal workload (10 events/day) where both agents legitimately agree on simple solution without artificial conflict."""
+    session = _build_base_session(session_id)
+    session.problem_statement = "Geração de relatório diário interno: 10 eventos por dia, 1 único consumidor, sem projeção de crescimento."
+    session.problem_context = session.problem_context.model_copy(
+        update={
+            "problem": session.problem_statement,
+            "facts": [
+                Fact(id="F1", description="10 eventos por dia no total", source="user_input"),
+                Fact(id="F2", description="Apenas 1 consumidor interno sem requisitos de concorrência", source="user_input"),
+            ],
+            "unknowns": [],
+        }
+    )
+    prop_a = session.proposals[CommitteeRole.ARCHITECT].model_copy(
+        update={
+            "artifact_id": "PROP-ARCH-001",
+            "title": "Modular Scheduled Batch Service",
+            "solution": "Isolated Python module with single responsibility separation between extraction and rendering, scheduled via system cron.",
+            "rationale": "Structural modularity ensures code clarity and low maintenance overhead while avoiding distributed complexity for 10 events/day.",
+            "benefits": ["Clean boundaries", "Easy local testing", "Zero operational overhead"],
+            "costs": CostEstimate(implementation_effort=EffortLevel.MEDIUM, infrastructure_cost_estimate="$0"),
+            "risks": ["Cron execution silently failing if logging is not configured"],
+            "complexity": Severity.LOW,
+            "reversibility": ReversibilityAssessment(score=ReversibilityLevel.HIGH, rationale="Single module"),
+            "future_implications": "Can wrap in Docker container if environment changes.",
+            "assumptions": ["Volume remains under 100 events/day"],
+            "invalidation_conditions": ["Multiple consumers require push notifications"],
+        }
+    )
+    prop_b = session.proposals[CommitteeRole.PRAGMATIST].model_copy(
+        update={
+            "artifact_id": "PROP-PRAG-001",
+            "title": "Single-File Python Script on System Crontab",
+            "solution": "Standalone Python script executed once daily by Linux crontab writing directly to shared storage.",
+            "rationale": "YAGNI and KISS: 10 events per day does not justify any queue, framework, or container orchestration.",
+            "benefits": ["1 day implementation", "Zero infrastructure cost", "Zero dependencies"],
+            "costs": CostEstimate(implementation_effort=EffortLevel.LOW, infrastructure_cost_estimate="$0"),
+            "risks": ["No automatic retry on transient error"],
+            "complexity": Severity.LOW,
+            "reversibility": ReversibilityAssessment(score=ReversibilityLevel.HIGH, rationale="Trivial to replace"),
+            "future_implications": "Add retry wrapper if network is unstable.",
+            "assumptions": ["Local machine has 99% uptime during cron trigger window"],
+            "invalidation_conditions": ["Report needed in real-time"],
+        }
+    )
+    session.proposals[CommitteeRole.ARCHITECT] = prop_a
+    session.proposals[CommitteeRole.PRAGMATIST] = prop_b
+
+    session.deliberation_synthesis = DeliberationSynthesis(
+        artifact_id="SYN-001",
+        version=1,
+        consensus_points=[
+            "Both agree 10 events/day does not justify any message broker, queue, or cloud service",
+            "Both agree on scheduled Python script running via cron as the right architectural choice",
+        ],
+        divergence_points=[
+            "Architect emphasizes modular internal layers for testability vs Pragmatist emphasizes single-file script for speed",
+        ],
+        arguments_by_alternative={
+            "PROP-ARCH-001": ["Clean testability", "Modular extraction/rendering separation"],
+            "PROP-PRAG-001": ["1 day delivery", "Zero overhead"],
+        },
+        trade_offs=[
+            TradeOffDimension(
+                dimension="Modularity vs Implementation Hours",
+                option_a="Separate extractor/renderer modules (1-2 days)",
+                option_b="Single script (half day)",
+                notes="Both options are highly simple and cost $0.",
+            )
+        ],
+    )
+
+    session.decision_record = DecisionRecord(
+        artifact_id="DEC-001",
+        version=1,
+        status=DecisionStatus.RECOMMENDED,
+        chosen_alternative="PROP-ARCH-001",
+        recommendation="Adopt modular Python script scheduled via cron with structured logging.",
+        rejected_alternatives=[
+            RejectedAlternative(
+                name="PROP-PRAG-001",
+                rejection_reason="Single-file script without modular separation makes automated unit testing harder, even though it is slightly faster to write.",
+            )
+        ],
+        rationale="For 10 events/day, a simple modular script scheduled via cron provides the best balance of simplicity ($0 infra) and maintainability without overengineering.",
+        trade_offs=[
+            TradeOffContract(
+                gain="Simplicity, $0 infrastructure cost, and clean maintainability",
+                sacrifice="Manual execution setup without distributed scheduler",
+            )
+        ],
+        accepted_risks=[
+            AcceptedRisk(
+                risk="Cron failure on host machine reboot",
+                severity=Severity.LOW,
+                mitigation="Add @reboot cron check and failure alert email",
+            )
+        ],
+        review_triggers=[
+            ReviewTrigger(
+                condition="Volume exceeds 1,000 events/day or multiple real-time consumers required",
+                metric_threshold="1000 events/day",
+                trigger_type="METRIC",
+            )
+        ],
+        confidence=Confidence.HIGH,
+        supported_by=["F1", "F2"],
+    )
+    return session
+
+
 def create_default_scenario_registry() -> ScenarioRegistry:
     """Create and populate the ScenarioRegistry with canonical benchmark scenarios."""
     reg = ScenarioRegistry()
@@ -610,6 +972,73 @@ def create_default_scenario_registry() -> ScenarioRegistry:
                 ],
             },
             session_builder=_build_scenario_14,
+        )
+    )
+
+    reg.register(
+        BenchmarkScenario(
+            id="scenario-15-setor-azul-subinformed",
+            description="Subinformed deliberation where critical unknowns must force INSUFFICIENT_EVIDENCE.",
+            expected_properties={
+                "min_score": {
+                    EpistemicCriterion.UNKNOWN_VISIBILITY: 4.5,
+                    EpistemicCriterion.EPISTEMIC_INTEGRITY: 4.5,
+                },
+                "passed": [
+                    EpistemicCriterion.UNKNOWN_VISIBILITY,
+                    EpistemicCriterion.EPISTEMIC_INTEGRITY,
+                ],
+            },
+            session_builder=_build_scenario_15,
+        )
+    )
+
+    reg.register(
+        BenchmarkScenario(
+            id="scenario-16-setor-azul-informed",
+            description="Informed deliberation with genuine divergence, explicit trade-off contract and traceable decision.",
+            expected_properties={
+                "min_score": {
+                    EvaluationCriterion.PROPOSAL_DIVERGENCE: 4.0,
+                    EvaluationCriterion.TRADE_OFF_EXPLICITNESS: 4.0,
+                    EvaluationCriterion.DECISION_TRACEABILITY: 4.0,
+                },
+                "passed": [
+                    EvaluationCriterion.PROPOSAL_DIVERGENCE,
+                    EvaluationCriterion.TRADE_OFF_EXPLICITNESS,
+                    EvaluationCriterion.DECISION_TRACEABILITY,
+                ],
+            },
+            session_builder=_build_scenario_16,
+        )
+    )
+
+    reg.register(
+        BenchmarkScenario(
+            id="scenario-17-setor-azul-contradictory",
+            description="Contradictory user input registered in conflicts rather than silently resolved.",
+            expected_properties={
+                "has_conflicts": True,
+            },
+            session_builder=_build_scenario_17,
+        )
+    )
+
+    reg.register(
+        BenchmarkScenario(
+            id="scenario-18-legitimate-consensus",
+            description="Minimal workload where both agents legitimately converge on simple solution without artificial conflict.",
+            expected_properties={
+                "min_score": {
+                    EvaluationCriterion.DECISION_TRACEABILITY: 4.0,
+                    EvaluationCriterion.HUMAN_SOVEREIGNTY: 4.0,
+                },
+                "passed": [
+                    EvaluationCriterion.DECISION_TRACEABILITY,
+                    EvaluationCriterion.HUMAN_SOVEREIGNTY,
+                ],
+            },
+            session_builder=_build_scenario_18,
         )
     )
 

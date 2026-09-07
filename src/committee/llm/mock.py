@@ -13,7 +13,9 @@ from schemas.context import (
     BudgetContext,
     Constraint,
     ConstraintType,
+    ContextDelta,
     Fact,
+    OpenQuestion,
     OperationalContext,
     ProblemContext,
     TeamContext,
@@ -495,6 +497,91 @@ class MockLLMProvider:
                         url_or_citation="Pragmatic Bookshelf",
                     )
                 ],
+            )
+
+        elif output_schema == ContextDelta:
+            answered_questions = input_context.get("answered_questions", [])
+            new_facts: list[Fact] = []
+            new_assumptions: list[Assumption] = []
+            new_unknowns: list[Unknown] = []
+            new_constraints: list[Constraint] = []
+            new_open_questions: list[OpenQuestion] = []
+            identified_conflicts: list[str] = []
+            source_q_ids: list[str] = []
+            resolved_q_ids: list[str] = []
+
+            for idx, item in enumerate(answered_questions, start=1):
+                if isinstance(item, dict):
+                    q_id = item.get("question_id", f"Q-{idx}")
+                    ans = str(item.get("answer", "")).strip()
+                    q_text = item.get("question", "")
+                else:
+                    q_id = getattr(item, "id", f"Q-{idx}")
+                    ans = str(getattr(item, "answer", "")).strip()
+                    q_text = getattr(item, "question", "")
+
+                source_q_ids.append(q_id)
+                ans_lower = ans.lower()
+
+                unknown_signals = [
+                    "não existe",
+                    "preciso criar",
+                    "desconhecido",
+                    "ainda não temos",
+                    "não temos",
+                    "ainda não foi definido",
+                    "não foi definido",
+                    "a definir",
+                    "tbd",
+                    "unknown",
+                ]
+                conflict_signals = [
+                    "conflito",
+                    "contraditório",
+                    "contradição",
+                    "incompatível",
+                ]
+
+                if any(sig in ans_lower for sig in unknown_signals):
+                    new_unknowns.append(
+                        Unknown(
+                            id=f"UNK-{len(new_unknowns) + 1:03d}",
+                            description=f"Capacidade ausente ou requisito indefinido ({q_id}): {ans}",
+                            impact_if_adverse=Severity.HIGH,
+                            potential_resolution="Prover alternativa que dispense o componente ou prever esforço de provisionamento.",
+                            decision_relevance=Severity.HIGH,
+                            could_change_selected_alternative=True,
+                            blocking=True,
+                            mitigation="Prover alternativa que dispense o componente ou prever esforço de provisionamento.",
+                        )
+                    )
+                    resolved_q_ids.append(q_id)
+                elif any(sig in ans_lower for sig in conflict_signals):
+                    identified_conflicts.append(
+                        f"Conflito identificado na resposta à pergunta {q_id} ('{q_text}'): '{ans}' contradiz restrições ou premissas anteriores."
+                    )
+                    resolved_q_ids.append(q_id)
+                elif ans:
+                    new_facts.append(
+                        Fact(
+                            id=f"FACT-{len(new_facts) + 1:03d}",
+                            description=f"Confirmado pelo usuário ({q_id}): {ans}",
+                            source="user_response",
+                        )
+                    )
+                    resolved_q_ids.append(q_id)
+
+            return ContextDelta(
+                delta_id=f"DELTA-{(len(resolved_q_ids) or 1):03d}",
+                source_question_ids=source_q_ids,
+                classification_basis="Classificação epistêmica determinística das respostas do usuário.",
+                resolved_question_ids=resolved_q_ids,
+                new_facts=new_facts,
+                new_assumptions=new_assumptions,
+                new_unknowns=new_unknowns,
+                new_constraints=new_constraints,
+                new_open_questions=new_open_questions,
+                identified_conflicts=identified_conflicts,
             )
 
         raise ValueError(f"MockLLMProvider does not have default generator for {output_schema.__name__}")

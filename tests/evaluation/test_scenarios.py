@@ -3,7 +3,7 @@
 from uuid import uuid4
 import pytest
 
-from schemas.common import Severity
+from schemas.common import DecisionStatus, Severity
 from src.committee.evaluation.evaluator import DeterministicEvaluator
 from src.committee.evaluation.models import EpistemicCriterion, EvaluationCriterion, EvaluationMetadata
 from src.committee.evaluation.scenarios import create_default_scenario_registry
@@ -15,9 +15,9 @@ def registry():
 
 
 def test_registry_contains_at_least_eight_scenarios(registry) -> None:
-    """Registry must contain at least 14 canonical benchmark scenarios."""
+    """Registry must contain at least 18 canonical benchmark scenarios."""
     scenarios = registry.list_all()
-    assert len(scenarios) >= 14
+    assert len(scenarios) >= 18
 
     expected_ids = {
         "scenario-01-different-solutions",
@@ -34,6 +34,10 @@ def test_registry_contains_at_least_eight_scenarios(registry) -> None:
         "scenario-12-unknown-ignored",
         "scenario-13-conditional-recommendation",
         "scenario-14-proper-uncertainty",
+        "scenario-15-setor-azul-subinformed",
+        "scenario-16-setor-azul-informed",
+        "scenario-17-setor-azul-contradictory",
+        "scenario-18-legitimate-consensus",
     }
     actual_ids = {s.id for s in scenarios}
     assert expected_ids.issubset(actual_ids)
@@ -220,8 +224,73 @@ def test_scenario_14_proper_uncertainty(registry) -> None:
     assert int_score.passed is True
 
 
+def test_scenario_15_setor_azul_subinformed(registry) -> None:
+    """Scenario 15: Subinformed Setor Azul with critical unknowns must emit INSUFFICIENT_EVIDENCE and score high on epistemic integrity."""
+    scen = registry.get("scenario-15-setor-azul-subinformed")
+    session = scen.session_builder(uuid4())
+    evaluator = DeterministicEvaluator()
+    res = evaluator.evaluate_session(session, metadata=EvaluationMetadata(scenario_id=scen.id))
+
+    assert session.decision_record.status == DecisionStatus.INSUFFICIENT_EVIDENCE
+    assert session.decision_record.chosen_alternative is None
+    assert len(session.problem_context.unknowns) >= 2
+    assert session.problem_context.has_blocking_unknowns()
+
+    unk_score = res.summary.epistemic_scores[EpistemicCriterion.UNKNOWN_VISIBILITY]
+    int_score = res.summary.epistemic_scores[EpistemicCriterion.EPISTEMIC_INTEGRITY]
+    assert unk_score.score >= 4.5
+    assert int_score.score >= 4.5
+
+
+def test_scenario_16_setor_azul_informed(registry) -> None:
+    """Scenario 16: Informed Setor Azul achieves genuine divergence, clear trade-offs and traceable recommendation."""
+    scen = registry.get("scenario-16-setor-azul-informed")
+    session = scen.session_builder(uuid4())
+    evaluator = DeterministicEvaluator()
+    res = evaluator.evaluate_session(session, metadata=EvaluationMetadata(scenario_id=scen.id))
+
+    assert session.decision_record.status == DecisionStatus.RECOMMENDED
+    assert session.decision_record.chosen_alternative == "PROP-ARCH-001"
+    assert len(session.decision_record.trade_offs) >= 1
+    assert len(session.decision_record.review_triggers) >= 1
+
+    div_score = res.summary.criterion_scores[EvaluationCriterion.PROPOSAL_DIVERGENCE]
+    tro_score = res.summary.criterion_scores[EvaluationCriterion.TRADE_OFF_EXPLICITNESS]
+    dec_score = res.summary.criterion_scores[EvaluationCriterion.DECISION_TRACEABILITY]
+    assert div_score.score >= 4.0
+    assert tro_score.score >= 4.0
+    assert dec_score.score >= 4.0
+
+
+def test_scenario_17_setor_azul_contradictory(registry) -> None:
+    """Scenario 17: Contradictory statements must be captured in conflicts and open questions."""
+    scen = registry.get("scenario-17-setor-azul-contradictory")
+    session = scen.session_builder(uuid4())
+
+    assert len(session.problem_context.conflicts) >= 1
+    assert any("50.000 req/s" in c for c in session.problem_context.conflicts)
+    assert any("Q-CONFLICT" in q.id for q in session.problem_context.open_questions)
+
+
+def test_scenario_18_legitimate_consensus(registry) -> None:
+    """Scenario 18: Minimal workload converges legitimately on simple solution with distinct role justifications."""
+    scen = registry.get("scenario-18-legitimate-consensus")
+    session = scen.session_builder(uuid4())
+    evaluator = DeterministicEvaluator()
+    res = evaluator.evaluate_session(session, metadata=EvaluationMetadata(scenario_id=scen.id))
+
+    assert session.decision_record.status == DecisionStatus.RECOMMENDED
+    assert session.decision_record.chosen_alternative == "PROP-ARCH-001"
+    assert "Kafka" not in (session.decision_record.recommendation or "")
+
+    dec_score = res.summary.criterion_scores[EvaluationCriterion.DECISION_TRACEABILITY]
+    sov_score = res.summary.criterion_scores[EvaluationCriterion.HUMAN_SOVEREIGNTY]
+    assert dec_score.score >= 4.0
+    assert sov_score.score >= 4.0
+
+
 def test_batch_evaluation_all_scenarios_deterministic(registry) -> None:
-    """Run all 14 benchmark scenarios in batch, verifying determinism and report output."""
+    """Run all 18 benchmark scenarios in batch, verifying determinism and report output."""
     evaluator = DeterministicEvaluator()
     results = []
 
@@ -233,4 +302,4 @@ def test_batch_evaluation_all_scenarios_deterministic(registry) -> None:
         assert len(report) > 200
         assert f"Scenario:      {scenario.id}" in report
 
-    assert len(results) >= 14
+    assert len(results) >= 18

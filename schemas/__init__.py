@@ -27,6 +27,7 @@ from schemas.context import (
     BudgetContext,
     Constraint,
     ConstraintType,
+    ContextDelta,
     Fact,
     OpenQuestion,
     OperationalContext,
@@ -34,6 +35,7 @@ from schemas.context import (
     TeamContext,
     TimeContext,
     Unknown,
+    apply_context_delta,
 )
 from schemas.decision import (
     AcceptedRisk,
@@ -125,6 +127,7 @@ __all__ = [
     "BudgetContext",
     "Constraint",
     "ConstraintType",
+    "ContextDelta",
     "Fact",
     "OpenQuestion",
     "OperationalContext",
@@ -132,6 +135,7 @@ __all__ = [
     "TeamContext",
     "TimeContext",
     "Unknown",
+    "apply_context_delta",
     # Proposals
     "ArchitectProposal",
     "BaseProposal",

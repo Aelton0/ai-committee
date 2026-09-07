@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from schemas.audit import AuditReport
 from schemas.common import CommitteeRole, CommitteeState, DecisionStatus, EventType
-from schemas.context import ProblemContext
+from schemas.context import ContextDelta, OpenQuestion, ProblemContext, apply_context_delta
 from schemas.decision import DecisionRecord
 from schemas.events import EventEnvelope, QuestionRaisedPayload, SessionCreatedPayload
 from schemas.learning import LearningReport
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 async def handle_investigation_step(
     orchestrator: "CommitteeOrchestrator", session: "Session"
 ) -> bool:
-    """Handle investigation phase: construct ProblemContext or raise questions if incomplete."""
+    """Handle investigation phase: construct ProblemContext, process user deltas, or raise questions."""
     if session.problem_context is None:
         # Retrieve problem statement from event store
         problem_statement = "Deliberation problem statement."
@@ -50,9 +50,10 @@ async def handle_investigation_step(
         if not isinstance(problem_ctx, ProblemContext):
             raise ValueError(f"Expected ProblemContext, got {type(problem_ctx).__name__}")
 
+        session.problem_context = problem_ctx
+
         # Check for unanswered questions
         if problem_ctx.has_unanswered_questions():
-            session.problem_context = problem_ctx
             first_q = problem_ctx.unanswered_questions()[0]
             envelope = EventEnvelope(
                 session_id=session.session_id,
@@ -75,20 +76,84 @@ async def handle_investigation_step(
         orchestrator.state_machine.handle_event(session, envelope)
         return True
 
-    # If problem context is already present without unanswered questions, validate it
-    if not session.problem_context.has_unanswered_questions():
+    # Context already exists: check if there are answered questions that need interpretation via ContextDelta
+    unincorporated = session.problem_context.unincorporated_answers()
+    if unincorporated:
+        interpret_context = {
+            "phase": "PHASE_0_INVESTIGATION",
+            "action": "INTERPRET_RESPONSE",
+            "problem_statement": session.problem_statement or "Deliberation problem statement.",
+            "problem_context": session.problem_context.model_dump(mode="json"),
+            "answered_questions": [
+                {
+                    "question_id": q.id,
+                    "question": q.question,
+                    "why_critical": q.why_critical,
+                    "dimension": q.dimension,
+                    "answer": q.answer,
+                }
+                for q in unincorporated
+            ],
+        }
+
+        delta = await orchestrator.runner.run(
+            orchestrator.facilitator_agent,
+            interpret_context,
+            output_schema=ContextDelta,
+        )
+
+        if not isinstance(delta, ContextDelta):
+            raise ValueError(f"Expected ContextDelta from Facilitator interpretation, got {type(delta).__name__}")
+
+        # Deterministic context update: vN -> vN+1
+        session.problem_context = apply_context_delta(session.problem_context, delta)
+
+    # After delta application, check if conflicts were identified
+    if session.problem_context.conflicts:
+        # Check if there is already an open question addressing the latest conflict
+        has_conflict_q = any("conflict" in q.id.lower() and q.answer is None for q in session.problem_context.open_questions)
+        if not has_conflict_q:
+            conflict_msg = session.problem_context.conflicts[-1]
+            conflict_q = OpenQuestion(
+                id=f"Q-CONFLICT-{len(session.problem_context.open_questions) + 1}",
+                question=f"Inconsistência identificada no contexto: {conflict_msg}. Por favor esclareça qual informação deve prevalecer.",
+                why_critical="Conflitos entre respostas do usuário devem ser formalmente resolvidos antes de liberar a divergência de arquitetura.",
+            )
+            session.problem_context = session.problem_context.model_copy(
+                update={"open_questions": list(session.problem_context.open_questions) + [conflict_q]}
+            )
+            envelope = EventEnvelope(
+                session_id=session.session_id,
+                event_type=EventType.QUESTION_RAISED,
+                actor=CommitteeRole.FACILITATOR,
+                payload=QuestionRaisedPayload(question=conflict_q),
+            )
+            orchestrator.state_machine.handle_event(session, envelope)
+            return False
+
+    # Check if any open questions remain unanswered
+    if session.problem_context.has_unanswered_questions():
+        first_unanswered = session.problem_context.unanswered_questions()[0]
         envelope = EventEnvelope(
             session_id=session.session_id,
-            event_type=EventType.CONTEXT_VALIDATED,
+            event_type=EventType.QUESTION_RAISED,
             actor=CommitteeRole.FACILITATOR,
-            artifact_id=session.problem_context.artifact_id,
-            artifact_version=f"v{session.problem_context.version}",
-            payload=session.problem_context,
+            payload=QuestionRaisedPayload(question=first_unanswered),
         )
         orchestrator.state_machine.handle_event(session, envelope)
-        return True
+        return False
 
-    return False
+    # Investigation closing rule: no unanswered questions, no unhandled conflicts, all deltas applied
+    envelope = EventEnvelope(
+        session_id=session.session_id,
+        event_type=EventType.CONTEXT_VALIDATED,
+        actor=CommitteeRole.FACILITATOR,
+        artifact_id=session.problem_context.artifact_id,
+        artifact_version=f"v{session.problem_context.version}",
+        payload=session.problem_context,
+    )
+    orchestrator.state_machine.handle_event(session, envelope)
+    return True
 
 
 async def handle_divergence_step(

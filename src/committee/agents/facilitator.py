@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel
 from schemas.common import CommitteeRole
-from schemas.context import ProblemContext
+from schemas.context import ContextDelta, ProblemContext
 from schemas.synthesis import DeliberationSynthesis
 from src.committee.agents.base import BaseAgent, ContextIsolationError
 
@@ -28,6 +28,8 @@ class FacilitatorAgent(BaseAgent):
         if context:
             phase = context.get("phase")
             if phase in ("PHASE_0_INVESTIGATION", "INVESTIGATION"):
+                if context.get("action") == "INTERPRET_RESPONSE" or "answered_questions" in context:
+                    return ContextDelta
                 return ProblemContext
         return DeliberationSynthesis
 

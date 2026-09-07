@@ -233,6 +233,29 @@ def gate_decision_exit(session: Session, envelope: EventEnvelope) -> QualityGate
         if not envelope.payload.rejected_alternatives:
             return fail_gate(gate, "Recommended decision must document rejected alternatives.")
 
+        # Deterministic Decision Eligibility Gate:
+        # Check whether session.problem_context contains blocking unknowns or decision-changing unknowns
+        # that lack explicit conditional clauses or risk mitigations in the decision record.
+        if session.problem_context and session.problem_context.has_blocking_unknowns():
+            blocking_unknowns = session.problem_context.blocking_unknowns()
+            has_conditionals = bool(envelope.payload.conditional_recommendations)
+            mitigated_in_risks = all(
+                any(
+                    u.id.lower() in (r.risk.lower() + " " + r.mitigation.lower())
+                    or (u.mitigation and u.mitigation.lower() in r.mitigation.lower())
+                    or u.description.lower() in (r.risk.lower() + " " + r.mitigation.lower())
+                    for r in envelope.payload.accepted_risks
+                )
+                for u in blocking_unknowns
+            )
+            if not (has_conditionals or mitigated_in_risks):
+                blocking_ids = [u.id for u in blocking_unknowns]
+                return fail_gate(
+                    gate,
+                    f"Cannot issue RECOMMENDED decision while blocking or decision-changing unknowns remain unmitigated: {blocking_ids}. "
+                    "Decisor must emit INSUFFICIENT_EVIDENCE or formulate guarded conditional_recommendations or explicit mitigations in accepted_risks.",
+                )
+
         # Validate chosen_alternative against active proposals in current round
         chosen = envelope.payload.chosen_alternative.strip()
         active_proposal_ids = {p.artifact_id for p in session.proposals.values()}
