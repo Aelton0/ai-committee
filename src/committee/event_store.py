@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
+import threading
 from typing import Any
 from uuid import UUID
 
@@ -25,14 +26,18 @@ class ImmutableEventStoreViolationError(EventStoreError):
     """Raised when an illegal mutation (UPDATE or DELETE) is attempted on the event store."""
 
 
+class EventStoreIntegrityError(EventStoreError):
+    """Raised when an event's payload does not match its recorded content_hash."""
+
+
 def compute_canonical_hash(payload: Any) -> str:
-    """Compute a deterministic, canonical SHA-256 hash for an event payload."""
+    """Compute SHA-256 canonical hash of any payload."""
     if isinstance(payload, BaseModel):
         data = payload.model_dump(mode="json")
     elif isinstance(payload, dict):
         data = payload
     else:
-        raise ValueError(f"Cannot compute canonical hash for type: {type(payload)}")
+        data = str(payload)
 
     canonical_json = json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     digest = hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
@@ -50,6 +55,7 @@ class EventStore:
         if self.db_path != ":memory:":
             Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
 
+        self._lock = threading.Lock()
         self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._init_db()
@@ -57,6 +63,7 @@ class EventStore:
     def _init_db(self) -> None:
         """Initialize SQLite database settings, schema, and immutability triggers."""
         cursor = self._conn.cursor()
+        cursor.execute("PRAGMA busy_timeout = 5000;")
         if self.db_path != ":memory:":
             cursor.execute("PRAGMA journal_mode=WAL;")
         cursor.execute("PRAGMA synchronous=NORMAL;")
@@ -107,9 +114,9 @@ class EventStore:
 
     def append(self, envelope: EventEnvelope) -> None:
         """Atomically persist a validated EventEnvelope into the append-only store."""
-        # Calculate canonical hash if missing
-        content_hash = envelope.content_hash
-        if not content_hash and envelope.payload is not None:
+        # Always compute canonical hash unconditionally from payload to prevent forgery (MEDIUM-01)
+        content_hash = None
+        if envelope.payload is not None:
             content_hash = compute_canonical_hash(envelope.payload)
 
         # Prepare payload json
@@ -123,37 +130,38 @@ class EventStore:
         now_iso = datetime.now(timezone.utc).isoformat()
 
         try:
-            with self._conn:
-                self._conn.execute(
-                    """
-                    INSERT INTO events (
-                        event_id,
-                        session_id,
-                        correlation_id,
-                        event_type,
-                        timestamp,
-                        actor,
-                        artifact_id,
-                        artifact_version,
-                        content_hash,
-                        payload_json,
-                        created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        str(envelope.event_id),
-                        str(envelope.session_id),
-                        str(envelope.correlation_id) if envelope.correlation_id else None,
-                        envelope.event_type.value,
-                        envelope.timestamp.isoformat(),
-                        envelope.actor.value,
-                        envelope.artifact_id,
-                        envelope.artifact_version,
-                        content_hash,
-                        payload_json,
-                        now_iso,
-                    ),
-                )
+            with self._lock:
+                with self._conn:
+                    self._conn.execute(
+                        """
+                        INSERT INTO events (
+                            event_id,
+                            session_id,
+                            correlation_id,
+                            event_type,
+                            timestamp,
+                            actor,
+                            artifact_id,
+                            artifact_version,
+                            content_hash,
+                            payload_json,
+                            created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            str(envelope.event_id),
+                            str(envelope.session_id),
+                            str(envelope.correlation_id) if envelope.correlation_id else None,
+                            envelope.event_type.value,
+                            envelope.timestamp.isoformat(),
+                            envelope.actor.value,
+                            envelope.artifact_id,
+                            envelope.artifact_version,
+                            content_hash,
+                            payload_json,
+                            now_iso,
+                        ),
+                    )
         except sqlite3.IntegrityError as e:
             if "UNIQUE constraint failed: events.event_id" in str(e):
                 raise DuplicateEventError(
@@ -163,31 +171,33 @@ class EventStore:
 
     def get_events(self, session_id: UUID) -> list[EventEnvelope]:
         """Retrieve all events belonging to a session in strict chronological sequence order."""
-        cursor = self._conn.cursor()
-        cursor.execute(
-            """
-            SELECT
-                event_id,
-                session_id,
-                correlation_id,
-                event_type,
-                timestamp,
-                actor,
-                artifact_id,
-                artifact_version,
-                content_hash,
-                payload_json
-            FROM events
-            WHERE session_id = ?
-            ORDER BY sequence ASC
-            """,
-            (str(session_id),),
-        )
-        rows = cursor.fetchall()
+        with self._lock:
+            cursor = self._conn.cursor()
+            cursor.execute(
+                """
+                SELECT
+                    event_id,
+                    session_id,
+                    correlation_id,
+                    event_type,
+                    timestamp,
+                    actor,
+                    artifact_id,
+                    artifact_version,
+                    content_hash,
+                    payload_json
+                FROM events
+                WHERE session_id = ?
+                ORDER BY sequence ASC
+                """,
+                (str(session_id),),
+            )
+            rows = cursor.fetchall()
 
         events: list[EventEnvelope] = []
         for row in rows:
             payload_dict = json.loads(row["payload_json"])
+            stored_hash = row["content_hash"]
             envelope = EventEnvelope(
                 event_id=UUID(row["event_id"]),
                 session_id=UUID(row["session_id"]),
@@ -197,41 +207,51 @@ class EventStore:
                 actor=row["actor"],
                 artifact_id=row["artifact_id"],
                 artifact_version=row["artifact_version"],
-                content_hash=row["content_hash"],
+                content_hash=stored_hash,
                 payload=payload_dict,
             )
+            # Verify hash integrity on read (MEDIUM-01)
+            if stored_hash and envelope.payload is not None:
+                expected_hash = compute_canonical_hash(envelope.payload)
+                if stored_hash != expected_hash:
+                    raise EventStoreIntegrityError(
+                        f"Integrity check failed for event '{envelope.event_id}': "
+                        f"stored hash '{stored_hash}' does not match computed hash '{expected_hash}'."
+                    )
             events.append(envelope)
         return events
 
     def get_last_event(self, session_id: UUID) -> EventEnvelope | None:
         """Retrieve the latest recorded event for a session, or None if session is empty."""
-        cursor = self._conn.cursor()
-        cursor.execute(
-            """
-            SELECT
-                event_id,
-                session_id,
-                correlation_id,
-                event_type,
-                timestamp,
-                actor,
-                artifact_id,
-                artifact_version,
-                content_hash,
-                payload_json
-            FROM events
-            WHERE session_id = ?
-            ORDER BY sequence DESC
-            LIMIT 1
-            """,
-            (str(session_id),),
-        )
-        row = cursor.fetchone()
+        with self._lock:
+            cursor = self._conn.cursor()
+            cursor.execute(
+                """
+                SELECT
+                    event_id,
+                    session_id,
+                    correlation_id,
+                    event_type,
+                    timestamp,
+                    actor,
+                    artifact_id,
+                    artifact_version,
+                    content_hash,
+                    payload_json
+                FROM events
+                WHERE session_id = ?
+                ORDER BY sequence DESC
+                LIMIT 1
+                """,
+                (str(session_id),),
+            )
+            row = cursor.fetchone()
         if not row:
             return None
 
         payload_dict = json.loads(row["payload_json"])
-        return EventEnvelope(
+        stored_hash = row["content_hash"]
+        envelope = EventEnvelope(
             event_id=UUID(row["event_id"]),
             session_id=UUID(row["session_id"]),
             correlation_id=UUID(row["correlation_id"]) if row["correlation_id"] else None,
@@ -240,25 +260,36 @@ class EventStore:
             actor=row["actor"],
             artifact_id=row["artifact_id"],
             artifact_version=row["artifact_version"],
-            content_hash=row["content_hash"],
+            content_hash=stored_hash,
             payload=payload_dict,
         )
+        if stored_hash and envelope.payload is not None:
+            expected_hash = compute_canonical_hash(envelope.payload)
+            if stored_hash != expected_hash:
+                raise EventStoreIntegrityError(
+                    f"Integrity check failed for event '{envelope.event_id}': "
+                    f"stored hash '{stored_hash}' does not match computed hash '{expected_hash}'."
+                )
+        return envelope
 
     def count_events(self, session_id: UUID) -> int:
         """Return the number of events recorded for a session."""
-        cursor = self._conn.cursor()
-        cursor.execute(
-            "SELECT COUNT(*) FROM events WHERE session_id = ?",
-            (str(session_id),),
-        )
-        return int(cursor.fetchone()[0])
+        with self._lock:
+            cursor = self._conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) FROM events WHERE session_id = ?",
+                (str(session_id),),
+            )
+            return int(cursor.fetchone()[0])
 
     def get_all_session_ids(self) -> list[UUID]:
         """Return list of all distinct session UUIDs present in the store."""
-        cursor = self._conn.cursor()
-        cursor.execute("SELECT DISTINCT session_id FROM events ORDER BY sequence ASC")
-        return [UUID(row[0]) for row in cursor.fetchall()]
+        with self._lock:
+            cursor = self._conn.cursor()
+            cursor.execute("SELECT DISTINCT session_id FROM events ORDER BY sequence ASC")
+            return [UUID(row[0]) for row in cursor.fetchall()]
 
     def close(self) -> None:
         """Close SQLite database connection."""
-        self._conn.close()
+        with self._lock:
+            self._conn.close()

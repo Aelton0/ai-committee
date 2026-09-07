@@ -5,7 +5,7 @@ import pytest
 
 from schemas.common import Severity
 from src.committee.evaluation.evaluator import DeterministicEvaluator
-from src.committee.evaluation.models import EvaluationCriterion, EvaluationMetadata
+from src.committee.evaluation.models import EpistemicCriterion, EvaluationCriterion, EvaluationMetadata
 from src.committee.evaluation.scenarios import create_default_scenario_registry
 
 
@@ -15,9 +15,9 @@ def registry():
 
 
 def test_registry_contains_at_least_eight_scenarios(registry) -> None:
-    """Registry must contain at least 8 canonical benchmark scenarios."""
+    """Registry must contain at least 14 canonical benchmark scenarios."""
     scenarios = registry.list_all()
-    assert len(scenarios) >= 8
+    assert len(scenarios) >= 14
 
     expected_ids = {
         "scenario-01-different-solutions",
@@ -28,6 +28,12 @@ def test_registry_contains_at_least_eight_scenarios(registry) -> None:
         "scenario-06-untraceable-decision",
         "scenario-07-insufficient-evidence",
         "scenario-08-generic-mentor",
+        "scenario-09-invented-fact",
+        "scenario-10-hidden-assumption",
+        "scenario-11-explicit-assumption",
+        "scenario-12-unknown-ignored",
+        "scenario-13-conditional-recommendation",
+        "scenario-14-proper-uncertainty",
     }
     actual_ids = {s.id for s in scenarios}
     assert expected_ids.issubset(actual_ids)
@@ -136,8 +142,86 @@ def test_scenario_08_generic_mentor(registry) -> None:
     assert any(f.id == "F-LRN-GENERIC" for f in res.summary.critical_findings)
 
 
+def test_scenario_09_invented_fact(registry) -> None:
+    """Scenario 9: Invented facts not present in context must fail fact grounding."""
+    scen = registry.get("scenario-09-invented-fact")
+    session = scen.session_builder(uuid4())
+    evaluator = DeterministicEvaluator()
+    res = evaluator.evaluate_session(session, metadata=EvaluationMetadata(scenario_id=scen.id))
+
+    fact_score = res.summary.epistemic_scores[EpistemicCriterion.FACT_GROUNDING]
+    assert fact_score.score <= 2.0
+    assert fact_score.passed is False
+    assert any(f.id == "F-EPI-FACT-01" for f in res.summary.critical_findings)
+
+
+def test_scenario_10_hidden_assumption(registry) -> None:
+    """Scenario 10: Hidden assumptions without declaration must fail assumption transparency."""
+    scen = registry.get("scenario-10-hidden-assumption")
+    session = scen.session_builder(uuid4())
+    evaluator = DeterministicEvaluator()
+    res = evaluator.evaluate_session(session, metadata=EvaluationMetadata(scenario_id=scen.id))
+
+    asm_score = res.summary.epistemic_scores[EpistemicCriterion.ASSUMPTION_TRANSPARENCY]
+    assert asm_score.score <= 2.5
+    assert asm_score.passed is False
+    assert any(f.id == "F-EPI-ASM-01" for f in res.summary.critical_findings)
+
+
+def test_scenario_11_explicit_assumption(registry) -> None:
+    """Scenario 11: Explicit assumptions with invalidation conditions must score high."""
+    scen = registry.get("scenario-11-explicit-assumption")
+    session = scen.session_builder(uuid4())
+    evaluator = DeterministicEvaluator()
+    res = evaluator.evaluate_session(session, metadata=EvaluationMetadata(scenario_id=scen.id))
+
+    asm_score = res.summary.epistemic_scores[EpistemicCriterion.ASSUMPTION_TRANSPARENCY]
+    assert asm_score.score >= 4.5
+    assert asm_score.passed is True
+
+
+def test_scenario_12_unknown_ignored(registry) -> None:
+    """Scenario 12: Ignoring critical context unknowns must fail unknown visibility."""
+    scen = registry.get("scenario-12-unknown-ignored")
+    session = scen.session_builder(uuid4())
+    evaluator = DeterministicEvaluator()
+    res = evaluator.evaluate_session(session, metadata=EvaluationMetadata(scenario_id=scen.id))
+
+    unk_score = res.summary.epistemic_scores[EpistemicCriterion.UNKNOWN_VISIBILITY]
+    assert unk_score.score <= 2.5
+    assert unk_score.passed is False
+    assert any(f.id == "F-EPI-UNK-01" for f in res.summary.critical_findings)
+
+
+def test_scenario_13_conditional_recommendation(registry) -> None:
+    """Scenario 13: Conditional recommendations (IF ... THEN ...) must score high on grounding."""
+    scen = registry.get("scenario-13-conditional-recommendation")
+    session = scen.session_builder(uuid4())
+    evaluator = DeterministicEvaluator()
+    res = evaluator.evaluate_session(session, metadata=EvaluationMetadata(scenario_id=scen.id))
+
+    rec_score = res.summary.epistemic_scores[EpistemicCriterion.RECOMMENDATION_GROUNDING]
+    assert rec_score.score >= 4.5
+    assert rec_score.passed is True
+
+
+def test_scenario_14_proper_uncertainty(registry) -> None:
+    """Scenario 14: Proper uncertainty handling with INSUFFICIENT_EVIDENCE must score high."""
+    scen = registry.get("scenario-14-proper-uncertainty")
+    session = scen.session_builder(uuid4())
+    evaluator = DeterministicEvaluator()
+    res = evaluator.evaluate_session(session, metadata=EvaluationMetadata(scenario_id=scen.id))
+
+    unk_score = res.summary.epistemic_scores[EpistemicCriterion.UNKNOWN_VISIBILITY]
+    int_score = res.summary.epistemic_scores[EpistemicCriterion.EPISTEMIC_INTEGRITY]
+    assert unk_score.score >= 4.5
+    assert int_score.score >= 4.5
+    assert unk_score.passed is True
+    assert int_score.passed is True
+
+
 def test_batch_evaluation_all_scenarios_deterministic(registry) -> None:
-    """Run all 8 benchmark scenarios in batch, verifying determinism and report output."""
+    """Run all 14 benchmark scenarios in batch, verifying determinism and report output."""
     evaluator = DeterministicEvaluator()
     results = []
 
@@ -149,4 +233,4 @@ def test_batch_evaluation_all_scenarios_deterministic(registry) -> None:
         assert len(report) > 200
         assert f"Scenario:      {scenario.id}" in report
 
-    assert len(results) >= 8
+    assert len(results) >= 14

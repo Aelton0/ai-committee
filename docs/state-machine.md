@@ -28,17 +28,17 @@ A máquina de estados é composta por estados deliberativos ativos, estados de e
              ┌─────────────────────┐                                │
              │     DIVERGENCE      │                                │
              └──────────┬──────────┘                                │
-                        │ PROPOSALS_CREATED                         │
+                        │ PROPOSAL_CREATED (x2)                     │
                         ▼                                           │
              ┌─────────────────────┐       PHASE_ROLLBACK           │
              │    CONFRONTATION    ├────────────────────────────────┤
              └──────────┬──────────┘                                │
                         │ AUDIT_COMPLETED                           │
                         ▼                                           │
-             ┌─────────────────────┐                                │
-             │       DEFENSE       │                                │
+             ┌─────────────────────┐       PHASE_ROLLBACK           │
+             │       DEFENSE       ├────────────────────────────────┤
              └──────────┬──────────┘                                │
-                        │ DEFENSES_SUBMITTED                        │
+                        │ DEFENSE_SUBMITTED (x2)                    │
                         ▼                                           │
              ┌─────────────────────┐                                │
              │     CONVERGENCE     │                                │
@@ -62,7 +62,7 @@ A máquina de estados é composta por estados deliberativos ativos, estados de e
              └─────────────────────┘    └────────────────────┘      │
                                                                     │
     [ Qualquer Estado Ativo ] ──► SESSION_CANCELLED ──► [ CANCELLED ]
-    [ Qualquer Estado Ativo ] ──► CRITICAL_BLOCK   ──► [ BLOCKED ]
+    [ Qualquer Estado Ativo ] ──► CRITICAL_ERROR   ──► [ BLOCKED ]
 ```
 
 ### 1.1 Estados Ativos e Deliberativos
@@ -79,8 +79,7 @@ A máquina de estados é composta por estados deliberativos ativos, estados de e
 
 ### 1.2 Estados de Exceção, Pausa e Terminais Alternativos
 * `WAITING_FOR_USER`: Interrupção deliberada para interação com o usuário (perguntas abertas, aprovação de portão ou revisão).
-* `ROLLED_BACK`: Estado transicional que registra a regressão controlada de uma fase adiantada para uma anterior (ex.: retorno à `INVESTIGATION` a partir de `CONFRONTATION`).
-* `BLOCKED`: Execução suspensa devido a violação insolúvel de restrição ou inconsistência lógica insanável que exige intervenção externa.
+* `BLOCKED`: Execução suspensa devido a erro de runtime crítico ou inconsistência insanável que impede deliberação (`CriticalErrorPayload`).
 * `INSUFFICIENT_EVIDENCE`: Estado terminal em que o comitê formalmente atesta que os dados fornecidos não sustentam uma decisão técnica responsável.
 * `CANCELLED`: Estado terminal acionado pelo usuário humano para abortar a sessão a qualquer momento.
 
@@ -90,20 +89,20 @@ A máquina de estados é composta por estados deliberativos ativos, estados de e
 
 | Estado Origem | Evento Disparador | Condição de Guarda (*Guard*) | Estado Destino | Efeitos Colaterais / Artefatos |
 | :--- | :--- | :--- | :--- | :--- |
-| `DRAFT` | `SESSION_CREATED` | Entrada do usuário não-nula | `INVESTIGATION` | Inicializa log append-only da sessão. |
+| `DRAFT` | `SESSION_CREATED` | Entrada do usuário não-nula | `INVESTIGATION` | Inicializa log append-only da sessão e contexto inicial. |
 | `INVESTIGATION` | `QUESTION_RAISED` | Há informação crítica faltante (`OpenQuestions > 0`) | `WAITING_FOR_USER` | Notifica usuário com lista de perguntas. |
 | `WAITING_FOR_USER` | `USER_RESPONDED` | Todas as perguntas obrigatórias foram respondidas | `INVESTIGATION` | Incorpora respostas ao rascunho de contexto. |
 | `INVESTIGATION` | `CONTEXT_VALIDATED` | Fatos, restrições e premissas separados; `OpenQuestions == 0` | `DIVERGENCE` | Congela `ProblemContext` v1 (imutável). |
-| `DIVERGENCE` | `PROPOSALS_CREATED` | Ambas as propostas (Arquiteto e Pragmático) emitidas e completas | `CONFRONTATION` | Registra `ArchitectProposal` v1 e `PragmaticProposal` v1. |
-| `CONFRONTATION` | `AUDIT_COMPLETED` | Críticas estruturadas para ambas as propostas geradas | `DEFENSE` | Registra `AuditReport` v1. |
-| `CONFRONTATION` | `PHASE_ROLLBACK` | Auditor detecta premissa falsa basilar ou desconhecido bloqueante | `INVESTIGATION` | Registra motivo do rollback; notifica usuário. |
-| `DEFENSE` | `DEFENSES_SUBMITTED` | Proponentes responderam aos apontamentos do Auditor | `CONVERGENCE` | Registra `ArchitectDefense` e `PragmaticDefense`. |
-| `CONVERGENCE` | `SYNTHESIS_CREATED` | Mapeamento de consensos, divergências e trade-offs concluído | `DECISION` | Registra `DeliberationSynthesis` v1. |
+| `DIVERGENCE` | `PROPOSAL_CREATED` | Proposta válida submetida por Arquiteto ou Pragmático | `DIVERGENCE` (se 1ª) / `CONFRONTATION` (quando ambas registradas) | Registra `ArchitectProposal` e `PragmaticProposal`. Rejeita duplicata para mesmo papel na rodada. |
+| `CONFRONTATION` | `AUDIT_COMPLETED` | Críticas estruturadas para ambas as propostas geradas | `DEFENSE` | Registra `AuditReport` v1 cobrindo ambas as propostas. |
+| `CONFRONTATION` ou `DEFENSE` | `PHASE_ROLLBACK` | Auditor detecta premissa falsa basilar ou desconhecido bloqueante | `INVESTIGATION` | Arquiva rodada ativa em `historical_rounds` (`SUPERSEDED_BY_ROLLBACK`); limpa artefatos ativos da rodada. |
+| `DEFENSE` | `DEFENSE_SUBMITTED` | Proponente respondeu aos apontamentos do Auditor | `DEFENSE` (se 1ª) / `CONVERGENCE` (quando ambas registradas) | Registra `ArchitectDefense` e `PragmaticDefense`. Valida referências a achados do audit report. |
+| `CONVERGENCE` | `SYNTHESIS_CREATED` | Mapeamento neutro de consensos, divergências e trade-offs concluído | `DECISION` | Registra `DeliberationSynthesis` v1. |
 | `DECISION` | `DECISION_RECORDED` | Recomendação técnica viável formulada com trade-offs e gatilhos | `REFLECTION` | Registra `DecisionRecord` (Status: `RECOMMENDED`). |
 | `DECISION` | `DECISION_FAILED` | Evidências e premissas insuficientes para sustentar escolha | `INSUFFICIENT_EVIDENCE` | Registra `DecisionRecord` (Status: `INSUFFICIENT_EVIDENCE`). |
-| `REFLECTION` | `LEARNING_REPORT_CREATED` | Conceitos, lacunas e guia de estudo mapeados | `COMPLETED` | Registra `LearningReport` v1; fecha sessão. |
-| *Qualquer Estado* | `USER_CANCELLED` | Usuário solicita abortamento explícito da sessão | `CANCELLED` | Registra motivo do cancelamento e preserva log. |
-| *Qualquer Estado* | `CRITICAL_ERROR` | Erro não-recuperável de execução ou violação estrutural | `BLOCKED` | Registra stacktrace e diagnóstico de falha. |
+| `REFLECTION` | `LEARNING_REPORT_CREATED` | Conceitos, lacunas e guia de estudo mapeados | `COMPLETED` | Registra `LearningReport` v1; fecha sessão com sucesso. |
+| *Qualquer Estado Não-Terminal* | `SESSION_CANCELLED` / `USER_OVERRIDE` | Usuário solicita abortamento explícito da sessão (`UserAbortCommand`) | `CANCELLED` | Registra motivo do cancelamento e preserva log histórico. |
+| *Qualquer Estado Não-Terminal* | `CRITICAL_ERROR` | Erro não-recuperável de execução ou violação estrutural | `BLOCKED` | Registra diagnóstico de falha (`CriticalErrorPayload`). |
 
 ---
 
@@ -112,37 +111,38 @@ A máquina de estados é composta por estados deliberativos ativos, estados de e
 Nenhuma transição de fase ocorre automaticamente sem a validação do respectivo portal de qualidade:
 
 ### Gate 0: Saída de `INVESTIGATION` $\rightarrow$ `DIVERGENCE`
-1. O campo `ProblemContext.summary` expressa o objetivo técnico e de negócio de forma inequívoca.
-2. Não há itens não respondidos na lista `OpenQuestions`.
-3. Todo item na lista `Facts` é comprovado ou validado pelo usuário.
-4. Todo item na lista `Constraints` possui impacto delimitado.
-5. Todo item na lista `Assumptions` está explicitado como premissa sujeita a risco.
-6. A lista `SuccessCriteria` possui pelo menos uma métrica ou condição objetiva de sucesso.
+1. O campo `ProblemContext.problem` expressa o objetivo técnico e de negócio de forma inequívoca.
+2. Não há itens não respondidos na lista `open_questions`.
+3. Todo item na lista `facts` possui identificador, descrição e fonte delimitada.
+4. Todo item na lista `constraints` possui identificador e descrição delimitada.
+5. Todo item na lista `assumptions` está explicitado como premissa sujeita a risco.
+6. A lista `success_criteria` possui pelo menos uma métrica ou condição objetiva não-vazia.
 
 ### Gate 1: Saída de `DIVERGENCE` $\rightarrow$ `CONFRONTATION`
 1. Tanto `ArchitectProposal` quanto `PragmaticProposal` estão completas no schema exigido.
-2. Ambas as propostas cobrem obrigatoriamente: solução, justificativa, custos, riscos, complexidade operacional, reversibilidade, premissas assumidas e condições de obsolescência.
-3. Não houve vazamento de contexto entre as propostas durante a geração (verificação de isolamento cego).
+2. O ator do envelope corresponde estritamente ao `proponent_role`.
+3. Não é permitida duplicidade de proposta para o mesmo papel na rodada ativa.
+4. Não houve vazamento de contexto entre as propostas durante a geração (verificação de isolamento cego).
 
 ### Gate 2: Saída de `CONFRONTATION` $\rightarrow$ `DEFENSE`
-1. O `AuditReport` contém análises específicas e individualizadas para ambas as propostas.
-2. Contém avaliação de pontos únicos de falha (SPOFs), superfícies de segurança, riscos operacionais e custos ocultos.
-3. Classifica a gravidade de cada risco apontado (Baixo, Médio, Alto, Crítico).
+1. O `AuditReport` contém análises específicas e individualizadas referenciando os IDs exatos de ambas as propostas registradas.
+2. Contém pelo menos um achado formal (`findings_proposal_a` ou `findings_proposal_b`), com severidade e justificativa técnica.
+3. Não referencia propostas inexistentes ou de outras sessões.
 
 ### Gate 3: Saída de `DEFENSE` $\rightarrow$ `CONVERGENCE`
-1. O Arquiteto e o Pragmático responderam explicitamente a todos os riscos classificados como Alto ou Crítico no `AuditReport`.
-2. Para cada apontamento, há concordância expressa com mitigação OU contestação técnica fundamentada.
-3. As propostas originais (v1) permaneceram intactas; refinamentos foram adicionados formalmente.
+1. O Arquiteto e o Pragmático responderam através de defesas estruturadas (`ArchitectDefense` e `PragmaticDefense`).
+2. Cada resposta de crítica referencia um identificador válido de achado presente no `AuditReport`.
+3. O `original_proposal_id` confere exatamente com a proposta ativa do proponente.
+4. Não é permitida duplicidade de defesa para o mesmo papel na rodada ativa.
 
 ### Gate 4: Saída de `CONVERGENCE` $\rightarrow$ `DECISION`
-1. A `DeliberationSynthesis` não expressa julgamento de preferência pessoal do Facilitador.
+1. A `DeliberationSynthesis` não expressa julgamento de preferência pessoal do Facilitador (neutra).
 2. Consolida com clareza os pontos de concordância e os pontos de desacordo irredutíveis.
 3. Mapeia a tabela comparativa de trade-offs de ambas as abordagens.
 
-### Gate 5: Saída de `DECISION` $\rightarrow$ `REFLECTION`
-1. O `DecisionRecord` responde integralmente às 13 Perguntas de Rastreabilidade.
-2. Define gatilhos objetivos e mensuráveis para revisão futura (*Review Triggers*).
-3. Caso não seja possível recomendar uma alternativa com segurança, o status obrigatório é `INSUFFICIENT_EVIDENCE`.
+### Gate 5: Saída de `DECISION` $\rightarrow$ `REFLECTION` ou `INSUFFICIENT_EVIDENCE`
+1. O `DecisionRecord` quando `RECOMMENDED` obrigatoriamente declara `chosen_alternative`, `recommendation`, pelo menos um contrato de trade-off (`trade_offs`), pelo menos um gatilho de revisão (`review_triggers`) e as alternativas rejeitadas (`rejected_alternatives`).
+2. Quando `INSUFFICIENT_EVIDENCE`, proíbe a declaração de alternativa vencedora (`chosen_alternative is None`) e exige a declaração explícita de `information_that_could_change_decision`.
 
 ### Gate 6: Saída de `REFLECTION` $\rightarrow$ `COMPLETED`
 1. O `LearningReport` identifica os conceitos de computação/engenharia subjacentes ao problema.
@@ -156,13 +156,15 @@ Nenhuma transição de fase ocorre automaticamente sem a validação do respecti
 Quando uma inconsistência basilar ou premissa falsa for identificada em fases posteriores, o sistema executa um **Rollback Controlado**:
 
 1. **Gatilho de Rollback**:
-   - Durante a Fase 2 (`CONFRONTATION`), o Auditor constata que uma premissa fundamental aceita na Fase 0 é categoricamente falsa ou impossível, invalidando ambas as propostas.
+   - Durante a Fase 2 (`CONFRONTATION`) ou Fase 3 (`DEFENSE`), o Auditor (ou comitê) constata que uma premissa fundamental aceita na Fase 0 é categoricamente falsa ou inviável, invalidando as propostas.
 2. **Execução do Rollback**:
-   - A máquina de estados dispara o evento `PHASE_ROLLBACK`.
-   - O estado atual transiciona para `ROLLED_BACK`, gravando uma entrada imutável no log de auditoria explicando o motivo técnico do retrocesso.
-   - O estado subsequente é automaticamente definido como `INVESTIGATION` (ou `WAITING_FOR_USER` se for necessário consultar o usuário diretamente).
-3. **Preservação de Histórico**:
-   - Os artefatos gerados nas fases abortadas (`Proposal v1`, `AuditReport v1`) **não são apagados**. Eles são marcados com a tag `SUPERSEDED_BY_ROLLBACK` para garantir a rastreabilidade completa do erro de projeto diagnosticado.
+   - A máquina de estados processa o evento `PHASE_ROLLBACK`.
+   - O estado atual transiciona diretamente para `INVESTIGATION`, gravando uma entrada imutável no log de auditoria.
+   - O estado `ROLLED_BACK` não existe como estado estável da FSM: o rollback é a **transição de evento** que restaura o ciclo deliberativo em `INVESTIGATION`.
+3. **Preservação Compulsória de Artefatos**:
+   - Os artefatos gerados nas fases retrocedidas (`proposals`, `audit_report`, `defenses`) **jamais são destruídos**.
+   - Eles são arquivados em `session.historical_rounds` como uma `DeliberationRound` com status `SUPERSEDED_BY_ROLLBACK` e carimbo temporal (`archived_at`), preservando a linhagem causal completa.
+   - As estruturas ativas da rodada corrente são reinicializadas para permitir a formulação de novas propostas limpas.
 
 ---
 
@@ -170,6 +172,6 @@ Quando uma inconsistência basilar ou premissa falsa for identificada em fases p
 
 O usuário humano possui autoridade para intervir nos seguintes pontos:
 * **Interação Ordinária**: Responder às dúvidas na Fase 0 (`WAITING_FOR_USER`).
-* **Contestação de Premissas**: O usuário pode rejeitar uma premissa formulada pelo Facilitador antes da Fase 1 ser iniciada.
-* **Solicitação de Rodada Suplementar**: Após a Fase 5, o usuário pode rejeitar a recomendação do Decisor e solicitar uma nova rodada de divergência com restrições adicionais.
-* **Encerramento Compulsório**: O usuário pode acionar `USER_CANCELLED` em qualquer momento, congelando a sessão com status `CANCELLED`.
+* **Contestação de Premissas**: O usuário pode rejeitar uma premissa formulada pelo Facilitador (`UserContestAssumptionCommand`).
+* **Solicitação de Revisão / Nova Rodada**: Após a Fase 5 (`DECISION`, `INSUFFICIENT_EVIDENCE`, `REFLECTION` ou `COMPLETED`), o usuário pode rejeitar a recomendação do Decisor (`UserRequestRevisionCommand`). A rodada atual é arquivada em `historical_rounds` como `SUPERSEDED_BY_REVISION` e a FSM retorna a `DIVERGENCE`.
+* **Encerramento Compulsório**: O usuário pode acionar cancelamento formal a qualquer momento (`SESSION_CANCELLED` ou `UserAbortCommand`), congelando a sessão com status `CANCELLED`.

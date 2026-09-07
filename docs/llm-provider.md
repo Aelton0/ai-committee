@@ -1,6 +1,6 @@
-# Integração de Provedores de LLM — Google Gemini — AI Committee
+# Integração de Provedores de LLM — Google Gemini e OpenAI — AI Committee
 
-Este documento descreve a arquitetura, o design de contratos, a segurança defensiva, a estratégia de structured output e a governança de execução da camada de provedores de LLM do **AI Committee**, com foco na implementação do **Google Gemini**.
+Este documento descreve a arquitetura, o design de contratos, a taxonomia de erros, a segurança defensiva, a estratégia de structured output e a governança de execução da camada de provedores de LLM do **AI Committee**, abrangendo as implementações para **Google Gemini** e **OpenAI**.
 
 ---
 
@@ -22,18 +22,21 @@ O sistema **não** depende de plataformas específicas como o Google Antigravity
                │                              │
                ▼                              ▼
 ┌──────────────────────────────┐ ┌────────────────────────────┐
-│ MockLLMProvider              │ │ GeminiLLMProvider          │
-│ (Testes determinísticos FSM) │ │ (Google GenAI SDK Oficial) │
+│ MockLLMProvider              │ │ Provedores Reais           │
+│ (Testes determinísticos FSM) │ │ (Gemini & OpenAI)          │
 └──────────────────────────────┘ └─────────────┬──────────────┘
                                                │
-                                               ▼
-                                 ┌────────────────────────────┐
-                                 │ Google Gemini API          │
-                                 │ (gemini-2.5-flash)         │
-                                 └────────────────────────────┘
+                       ┌───────────────────────┴───────────────────────┐
+                       │                                               │
+                       ▼                                               ▼
+         ┌───────────────────────────┐                   ┌───────────────────────────┐
+         │ GeminiLLMProvider         │                   │ OpenAILLMProvider         │
+         │ (Google GenAI SDK Oficial)│                   │ (OpenAI SDK Oficial v3+)  │
+         │ gemini-flash-latest       │                   │ gpt-4o / Responses API    │
+         └───────────────────────────┘                   └───────────────────────────┘
 ```
 
-A adição de novos provedores (ex.: Anthropic, OpenAI, modelos locais via Ollama/vLLM) ocorrerá futuramente através de novas implementações de `LLMProvider`, sem alterar uma única linha de:
+A adição de novos provedores ou a substituição entre eles ocorre via fábrica `create_llm_provider()` ou injeção de dependência direta, sem alterar uma única linha de:
 * Agentes especializados (`src/committee/agents/`);
 * State Machine (`src/committee/state_machine.py`);
 * Event Store append-only (`src/committee/event_store.py`);
@@ -50,17 +53,21 @@ A configuração é gerenciada de forma centralizada pela classe `LLMConfig` (`s
 
 | Variável | Padrão | Descrição |
 | :--- | :--- | :--- |
-| `GEMINI_API_KEY` | *(Obrigatória em modo real)* | Chave de API para autenticação no Google Gemini. |
-| `GOOGLE_API_KEY` | *(Fallback automático)* | Suporte à nomenclatura alternativa padrão do Google. |
-| `LLM_PROVIDER` | `gemini` | Identificador do provedor ativo (`gemini` ou `mock`). |
-| `GEMINI_MODEL` | `gemini-2.5-flash` | Nome do modelo a ser utilizado nas deliberações. |
-| `GEMINI_TIMEOUT_SECONDS` | `60.0` | Timeout máximo em segundos para cada chamada à API. |
-| `RUN_LIVE_LLM_TESTS` | `0` | Flag opt-in para habilitar testes de integração com a API real. |
+| `LLM_PROVIDER` | `gemini` | Identificador do provedor ativo (`openai`, `gemini` ou `mock`). |
+| `LLM_MODEL` | *(None)* | Sobrescreve o modelo padrão do provedor ativo. |
+| `OPENAI_API_KEY` | *(Obrigatória para OpenAI)* | Chave de API para autenticação na OpenAI (`sk-...`). |
+| `OPENAI_MODEL` | `gpt-4o` | Modelo padrão utilizado no provedor OpenAI. |
+| `OPENAI_TIMEOUT_SECONDS` | `60.0` | Timeout máximo em segundos para cada chamada à OpenAI. |
+| `GEMINI_API_KEY` | *(Obrigatória para Gemini)* | Chave de API para autenticação no Google Gemini (`AIza...`). |
+| `GOOGLE_API_KEY` | *(Fallback Gemini)* | Suporte à nomenclatura alternativa padrão do Google. |
+| `GEMINI_MODEL` | `gemini-flash-latest` | Modelo padrão utilizado no provedor Gemini. |
+| `GEMINI_TIMEOUT_SECONDS` | `60.0` | Timeout máximo em segundos para cada chamada ao Gemini. |
+| `RUN_LIVE_LLM_TESTS` | `0` | Flag opt-in para habilitar testes de integração com APIs reais. |
 
 ### 2.2. Segurança e Mascaramento Compulsório
 1. **API Keys Nunca são Commitadas**: Não existem chaves codificadas em arquivos do repositório.
-2. **Defesa em `__repr__` e `__str__`**: As classes `LLMConfig` e `GeminiLLMProvider` mascaram a chave (`AIza...3210`) ou a omitem completamente nas representações em string.
-3. **Sanitização de Exceções**: A função `sanitize_secrets_from_text` intercepta mensagens de erro do SDK ou de rede (como URLs com `?key=...` ou headers `x-goog-api-key`) e redacta qualquer menção a chaves antes de propagar as exceções.
+2. **Defesa em `__repr__` e `__str__`**: As classes `LLMConfig`, `GeminiLLMProvider` e `OpenAILLMProvider` mascaram chaves (`sk-p...2345` / `AIza...3210`) ou as omitem completamente nas representações em string.
+3. **Sanitização de Exceções**: A função `sanitize_secrets_from_text` intercepta mensagens de erro do SDK ou de rede (como headers de autorização `Bearer sk-...`, `x-goog-api-key`, parâmetros de URL `?key=...`) e redacta qualquer menção a chaves antes de propagar as exceções.
 4. **Isolamento de Persistência**: Segredos jamais são gravados nos eventos do SQLite/WAL ou nos artefatos da sessão.
 
 ---
@@ -69,134 +76,121 @@ A configuração é gerenciada de forma centralizada pela classe `LLMConfig` (`s
 
 O AI Committee rejeita terminantemente extração de informações via expressões regulares (*regex*) ou dependência de texto livre formatado em Markdown pelo LLM.
 
-A extração de artefatos opera no seguinte pipeline determinístico:
+### 3.1. OpenAI: Responses API e Chat Completions com Structured Outputs
+A OpenAI é integrada via SDK oficial `openai>=3.8.0`:
+* **Caminho Primário — Responses API**: O método `client.responses.parse(text_format=output_schema, instructions=system_prompt, input=context_json)` retorna um `ParsedResponse` onde `output_parsed` já é uma instância validada do modelo Pydantic correspondente.
+* **Caminho de Fallback — Chat Completions**: Se o endpoint de respostas retornar `NotFoundError` (ex.: modelos ou proxies que ainda não expõem `/responses`), o provedor executa fallback transparente para `client.chat.completions.parse(response_format=output_schema, ...)`.
+* **Zero Alucinação de Estrutura**: Todos os 9 schemas canônicos utilizam `ConfigDict(extra="forbid")`, o que gera esquemas JSON estritos (`strict: True`, `additionalProperties: False`), garantindo conformidade matemática com os parsers da OpenAI.
 
-```text
-Contexto Sanitizado da Fase (JSON)
-+
-System Prompt Especializado do Agente
-+
-Schema Pydantic Alvo (Ex: ArchitectProposal)
-               │
-               ▼
-   clean_schema_for_gemini()
-               │
-               ▼
-   Google GenAI SDK (types.GenerateContentConfig)
-     - response_mime_type: "application/json"
-     - response_schema: OpenAPI/JSON Schema adaptado
-               │
-               ▼
-   Google Gemini API (Inferência com Restrição Estrutural)
-               │
-               ▼
-   Payload JSON Válido (sem Markdown ou alucinações de formato)
-               │
-               ▼
-   Pydantic model_validate_json()
-               │
-               ▼
-   Instância Tipada do Artefato Canônico
-```
-
-### 3.1. Adaptação de Schemas Pydantic v2 para Google GenAI
-O Pydantic v2 gera especificações JSON Schema 2020-12 / OpenAPI 3.1 com o campo `exclusiveMinimum` para campos com validação estrita (ex.: `PositiveInt`, gerando `exclusiveMinimum: 0`). A biblioteca oficial `google-genai` valida o schema de saída contra `types.Schema` que rejeita campos extras com `extra_forbidden`.
-
-Para sanar essa discrepância sem alterar os schemas fundamentais do domínio, a função utilitária `clean_schema_for_gemini()` realiza adaptações recursivas equivalentes:
-* `exclusiveMinimum: N` (inteiro) $\rightarrow$ `minimum: N + 1` (ex.: `version > 0` torna-se `version >= 1`);
-* `exclusiveMaximum: N` (inteiro) $\rightarrow$ `maximum: N - 1`;
-* Remoção de metadados não reconhecidos pelo endpoint (ex.: `$schema`).
-
-Todos os 9 schemas canônicos do AI Committee passam com 100% de conformidade sob o transformador da SDK oficial.
+### 3.2. Google Gemini: Adaptação com `clean_schema_for_gemini`
+O SDK oficial `google-genai` recebe esquemas adaptados via `clean_schema_for_gemini()` para garantir compatibilidade com o OpenAPI 3.0 do endpoint do Gemini (ajustando `exclusiveMinimum` e desativando chamadas automáticas de função).
 
 ---
 
-## 4. Timeout, Erros e Política de Retries
+## 4. Taxonomia Unificada de Erros
 
-O provedor **não duplica a lógica de retries**. Ele reporta erros de forma transparente, permitindo que o `AgentRunner` mantenha autoridade total sobre o ciclo de tentativas:
+Para manter a orquestração agnóstica a qualquer SDK concreto, todos os erros de provedores são mapeados para a taxonomia padrão (`src/committee/llm/exceptions.py`):
 
 ```text
-GeminiLLMProvider
-       │
-       ▼ (timeout ou falha de rede)
-GeminiTimeoutError / GeminiAPIError (mensagem sanitizada)
-       │
-       ▼
-AgentRunner
-       │
-       ▼
-Retry Policy (tentativa 1 de 3 -> tentativa 2 de 3 -> sucesso)
+                     ┌──────────────────────────────┐
+                     │        ProviderError         │
+                     └──────────────┬───────────────┘
+       ┌──────────────┬─────────────┼──────────────┬──────────────┐
+       ▼              ▼             ▼              ▼              ▼
+┌──────────────┐┌──────────────┐┌────────────┐┌──────────────┐┌──────────────┐
+│ProviderConfig││ProviderAuth  ││ProviderRate││ProviderTime  ││ProviderTemp  │
+│urationError  ││entication    ││LimitError  ││outError      ││oraryError    │
+│              ││Error         ││            ││              ││              │
+└──────────────┘└──────────────┘└────────────┘└──────────────┘└──────────────┘
+                                    │              │
+                                    ▼              ▼
+                             ┌──────────────┐┌──────────────┐
+                             │ProviderResp  ││ProviderSchema│
+                             │onseError     ││Error         │
+                             └──────────────┘└──────────────┘
 ```
 
-* **`GeminiTimeoutError`**: Disparado quando a requisição excede `gemini_timeout_seconds`.
-* **`GeminiAPIError`**: Disparado para falhas 4xx/5xx da API, bloqueios de segurança ou payload ininteligível.
-* **`GeminiConfigurationError`**: Disparado imediatamente se nenhuma credencial válida for fornecida.
+* **`ProviderConfigurationError`**: Chaves ausentes ou configuração inválida.
+* **`ProviderAuthenticationError`**: Falha 401/403 de autenticação ou token revogado.
+* **`ProviderRateLimitError`**: Limites de requisição atingidos (429).
+* **`ProviderTimeoutError`**: Estouro de tempo limite de resposta.
+* **`ProviderTemporaryError`**: Falhas de conexão, erros 5xx de servidor (transitórios).
+* **`ProviderSchemaError`**: Falha na validação de schema ou recusa do modelo.
+* **`ProviderResponseError`**: Resposta vazia ou ininteligível.
+
+O `AgentRunner` utiliza essa taxonomia para gerenciar retries automáticos em falhas transitórias (`ProviderTemporaryError`, `ProviderRateLimitError`) sem depender de classes específicas de SDKs terceiros.
 
 ---
 
 ## 5. Telemetria de Uso e Custos
 
-A cada invocação bem-sucedida, o `GeminiLLMProvider` extrai métricas de observabilidade de `response.usage_metadata` e armazena em `last_metadata: LLMCallMetadata`:
+A cada invocação bem-sucedida, tanto o `OpenAILLMProvider` quanto o `GeminiLLMProvider` extraem métricas padronizadas em `last_metadata: LLMCallMetadata`:
 
-* `model`: Nome exato do modelo Gemini executado.
-* `latency_seconds`: Tempo total de round-trip em segundos (medido via `time.perf_counter()`).
-* `input_tokens`: Quantidade de tokens no prompt (`prompt_token_count`).
-* `output_tokens`: Quantidade de tokens gerados no artefato (`candidates_token_count`).
-* `total_tokens`: Soma total dos tokens consumidos.
-
-Nenhum dado confidencial ou prompt de usuário é armazenado apenas para fins de telemetria.
+* `model`: Nome exato do modelo executado (ex.: `gpt-4o`, `gemini-flash-latest`).
+* `request_id`: Identificador único da requisição (quando fornecido pelo provedor).
+* `latency_seconds`: Tempo total de round-trip em segundos (`time.perf_counter()`).
+* `input_tokens`: Tokens de entrada consumidos.
+* `output_tokens`: Tokens gerados no artefato.
+* `total_tokens`: Soma total dos tokens da transação.
 
 ---
 
-## 6. Roteamento Futuro de Modelos
+## 6. Fábrica Centralizada de Provedores
 
-A arquitetura já suporta o mapeamento dinâmico de modelos por papel de agente via `LLMConfig.get_model_for_agent(role)`:
+A instanciação de provedores é simplificada pela função `create_llm_provider`:
 
 ```python
-config = LLMConfig(
-    gemini_model="gemini-2.5-flash",
-    agent_models={
-        "ARCHITECT": "gemini-1.5-pro",
-        "PRAGMATIST": "gemini-2.5-flash",
-        "AUDITOR_SRE": "gemini-1.5-pro",
-    }
-)
-```
+from src.committee.llm.factory import create_llm_provider
 
-Nesta fase inicial, todos os agentes utilizam o modelo padrão configurado (`gemini-2.5-flash`), preparando o sistema para roteamento diferenciado sem modificação nos agentes.
+# Provedor Mock para testes offline rápidos
+mock_provider = create_llm_provider("mock")
+
+# Provedor OpenAI real via variáveis de ambiente
+openai_provider = create_llm_provider("openai")
+
+# Provedor Gemini real via variáveis de ambiente
+gemini_provider = create_llm_provider("gemini")
+```
 
 ---
 
-## 7. Como Executar os Testes e o Smoke Test
+## 7. Como Executar os Testes e os Smoke Tests
 
-### 7.1. Testes Unitários Determinísticos (Sem Consumo de API)
-Os testes unitários utilizam mocks do cliente da SDK e não realizam chamadas externas à internet:
-
+### 7.1. Suíte Completa de Testes Determinísticos
 ```bash
+PYTHONPATH=. .venv/bin/pytest -v
+```
+
+### 7.2. Testes Unitários dos Provedores (Sem Chamadas Externas)
+```bash
+# Testes do provedor OpenAI
+PYTHONPATH=. .venv/bin/pytest -v tests/test_openai_provider.py
+
+# Testes de substituição agnóstica de provedores
+PYTHONPATH=. .venv/bin/pytest -v tests/test_provider_substitution.py
+
+# Testes do provedor Gemini
 PYTHONPATH=. .venv/bin/pytest -v tests/test_gemini_provider.py
 ```
 
-### 7.2. Teste de Integração Real (Opt-in)
-Executa uma chamada real ao Google Gemini gerando um `ArchitectProposal`:
-
+### 7.3. Testes de Integração Reais (Opt-in)
 ```bash
-export GEMINI_API_KEY="sua_chave_aqui"
-export RUN_LIVE_LLM_TESTS=1
-PYTHONPATH=. .venv/bin/pytest -v tests/integration/test_gemini_live.py
+# OpenAI Live
+RUN_LIVE_LLM_TESTS=1 OPENAI_API_KEY="sua_chave_openai" PYTHONPATH=. .venv/bin/pytest -v tests/integration/test_openai_live.py
+
+# Gemini Live
+RUN_LIVE_LLM_TESTS=1 GEMINI_API_KEY="sua_chave_gemini" PYTHONPATH=. .venv/bin/pytest -v tests/integration/test_gemini_live.py
 ```
 
-### 7.3. Smoke Test Controlado
-Script isolado que executa exclusivamente o `ArchitectAgent`, sem persistir sessão no Event Store:
+### 7.4. Smoke Tests Controlados
+Scripts isolados que executam exclusivamente o `ArchitectAgent` sem persistir no Event Store:
 
 ```bash
-export GEMINI_API_KEY="sua_chave_aqui"
+# OpenAI Smoke Test
+export OPENAI_API_KEY="sua_chave_openai"
+PYTHONPATH=. .venv/bin/python scripts/smoke_test_openai.py
+
+# Gemini Smoke Test
+export GEMINI_API_KEY="sua_chave_gemini"
 PYTHONPATH=. .venv/bin/python scripts/smoke_test_gemini.py
 ```
-
----
-
-## 8. Limitações Atuais
-
-1. **Sem Streaming**: A geração estruturada opera em modo bloco (*unary/non-streaming*), garantindo validação atômica do JSON pelo Pydantic antes de entregar o artefato ao runner.
-2. **Telemetria Efêmera**: As métricas de token e latência residem em memória (`provider.last_metadata`) e ainda não são gravadas em banco de dados ou dashboard de observabilidade.
-3. **Chave Única**: A configuração atual assume uma única chave de API para todos os membros do comitê.

@@ -52,6 +52,7 @@ async def handle_investigation_step(
 
         # Check for unanswered questions
         if problem_ctx.has_unanswered_questions():
+            session.problem_context = problem_ctx
             first_q = problem_ctx.unanswered_questions()[0]
             envelope = EventEnvelope(
                 session_id=session.session_id,

@@ -24,12 +24,13 @@ class AuditorAgent(BaseAgent):
         return AuditReport
 
     def validate_input_context(self, context: dict[str, Any]) -> None:
-        # Auditor isolation: Auditor MUST NOT receive defenses
-        if "architect_defense" in context and context["architect_defense"] is not None:
-            raise ContextIsolationError(
-                "Auditor isolation violated: Auditor received Architect defense."
-            )
-        if "pragmatic_defense" in context and context["pragmatic_defense"] is not None:
-            raise ContextIsolationError(
-                "Auditor isolation violated: Auditor received Pragmatic defense."
-            )
+        forbidden = [
+            ("architect_defense", "Auditor isolation violated: Auditor received Architect defense."),
+            ("pragmatic_defense", "Auditor isolation violated: Auditor received Pragmatic defense."),
+        ]
+        allowed_phases = {"PHASE_2_CONFRONTATION", "CONFRONTATION"}
+        required = {
+            "PHASE_2_CONFRONTATION": [("architect_proposal", "pragmatic_proposal")],
+            "CONFRONTATION": [("architect_proposal", "pragmatic_proposal")],
+        }
+        self._validate_context_policy(context, allowed_phases, required, forbidden)

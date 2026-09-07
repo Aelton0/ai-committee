@@ -34,7 +34,17 @@ from schemas.defense import (
     PragmaticDefense,
     ProposalAction,
 )
+from schemas.epistemic import (
+    AssumptionItem,
+    ConditionalRecommendation,
+    EpistemicSection,
+    FactItem,
+    InferenceItem,
+    RecommendationItem,
+    UnknownItem,
+)
 from schemas.learning import (
+    EpistemicLesson,
     LearningPathStep,
     LearningReference,
     LearningReport,
@@ -162,6 +172,51 @@ class MockLLMProvider:
                 invalidation_conditions=["Sustained traffic drops below 10 req/s permanently."],
                 modularity_strategy="Strict schema contracts enforced via CI/CD.",
                 evolution_path="Phase 1: Outbox pattern; Phase 2: Native streaming.",
+                epistemic_section=EpistemicSection(
+                    facts=[
+                        FactItem(id="F1", statement="PostgreSQL 15 single instance 16GB", source="User input"),
+                    ],
+                    assumptions=[
+                        AssumptionItem(
+                            id="A1",
+                            statement="Traffic will reach 1,500 req/s during peak sales",
+                            reason="Anticipated product campaign growth",
+                            confidence=Confidence.MEDIUM,
+                            invalidation_condition="Throughput remains below 50 req/s permanently",
+                        ),
+                    ],
+                    inferences=[
+                        InferenceItem(
+                            id="I1",
+                            statement="Direct synchronous database writes will bottleneck during marketing spikes",
+                            rationale="Single instance connection pool will saturate without asynchronous buffering",
+                            depends_on=["F1", "A1"],
+                            confidence=Confidence.HIGH,
+                        ),
+                    ],
+                    unknowns=[
+                        UnknownItem(
+                            id="U1",
+                            statement="Third-party payment gateway latency and concurrency limits under heavy load",
+                            impact_if_adverse=Severity.HIGH,
+                        ),
+                    ],
+                    conditional_recommendations=[
+                        ConditionalRecommendation(
+                            condition="IF sustained event volume exceeds 2,000 events/s",
+                            recommendation="THEN upgrade from Redis Streams to multi-broker Kafka cluster",
+                            evidence=["F1", "A1", "I1"],
+                        ),
+                    ],
+                    recommendations=[
+                        RecommendationItem(
+                            id="R1",
+                            statement="Decouple domain services using asynchronous message streaming",
+                            rationale="Ensures transactional isolation and prevents cascade failures",
+                            depends_on=["I1"],
+                        ),
+                    ],
+                ),
             )
 
         elif output_schema == PragmaticProposal:
@@ -187,6 +242,51 @@ class MockLLMProvider:
                 invalidation_conditions=["Peak transactions exceed 2,000 req/s."],
                 time_to_value="10 business days",
                 simplifications_made=["No distributed event broker", "Synchronous HTTP for internal flows"],
+                epistemic_section=EpistemicSection(
+                    facts=[
+                        FactItem(id="F1", statement="PostgreSQL 15 single instance 16GB", source="User input"),
+                    ],
+                    assumptions=[
+                        AssumptionItem(
+                            id="A1",
+                            statement="Existing Postgres instance handles queue I/O comfortably",
+                            reason="Traffic projections for Q1 remain moderate",
+                            confidence=Confidence.HIGH,
+                            invalidation_condition="Peak transactions exceed 2,000 req/s",
+                        ),
+                    ],
+                    inferences=[
+                        InferenceItem(
+                            id="I1",
+                            statement="Celery workers on Postgres deliver required functionality with zero added infra",
+                            rationale="Existing RDS instance handles background tasks without extra services",
+                            depends_on=["F1", "A1"],
+                            confidence=Confidence.HIGH,
+                        ),
+                    ],
+                    unknowns=[
+                        UnknownItem(
+                            id="U1",
+                            statement="Sustained transaction throughput capacity of Postgres queue under surge",
+                            impact_if_adverse=Severity.HIGH,
+                        ),
+                    ],
+                    conditional_recommendations=[
+                        ConditionalRecommendation(
+                            condition="IF database connection pool saturation exceeds 80%",
+                            recommendation="THEN provision dedicated Redis instance for background queues",
+                            evidence=["F1", "A1"],
+                        ),
+                    ],
+                    recommendations=[
+                        RecommendationItem(
+                            id="R1",
+                            statement="Modular monolith with Celery background workers",
+                            rationale="Maximizes time to value and keeps operational cost at $35/mo",
+                            depends_on=["I1"],
+                        ),
+                    ],
+                ),
             )
 
         elif output_schema == AuditReport:
@@ -271,6 +371,9 @@ class MockLLMProvider:
                 artifact_id="SYN-001",
                 version=1,
                 consolidated_facts=["Existing Postgres database", "Budget under $200/mo", "Deadline in 4 weeks"],
+                consolidated_assumptions=["Traffic grows moderately in Q1"],
+                consolidated_inferences=["Synchronous direct writes cause connection pool bottleneck; Celery on Postgres is viable short-term, Redis Streams is future upgrade path"],
+                consolidated_unknowns=["Peak payment gateway concurrency under load"],
                 consensus_points=[
                     "Both agree Kafka is excessive for current needs",
                     "Both agree on Postgres relational persistence",
@@ -332,6 +435,16 @@ class MockLLMProvider:
                     )
                 ],
                 confidence=Confidence.HIGH,
+                supported_by=["F1"],
+                depends_on=["A1"],
+                uncertainties=["U1"],
+                conditional_recommendations=[
+                    ConditionalRecommendation(
+                        condition="IF traffic sustained above 800 req/s for 3 consecutive days",
+                        recommendation="THEN migrate from Postgres queue to dedicated Redis queue",
+                        evidence=["F1", "A1"],
+                    )
+                ],
             )
 
         elif output_schema == LearningReport:
@@ -348,6 +461,14 @@ class MockLLMProvider:
                         observation="Initial requirements assumed queueing automatically solves database saturation.",
                         context_evidence="Problem framing where user assumed Celery eliminates backend load.",
                         recommended_topic="Queue backpressure and rate limiting.",
+                    )
+                ],
+                epistemic_lessons=[
+                    EpistemicLesson(
+                        concept="Trade-off between Scalability and Operational Simplicity",
+                        debate_example="Architect proposed Kafka cluster based on projected traffic growth",
+                        epistemic_confusion="Projected growth was an assumption, not an established fact",
+                        study_topic="Architectural assumptions, capacity planning, and YAGNI principle",
                     )
                 ],
                 study_questions=[

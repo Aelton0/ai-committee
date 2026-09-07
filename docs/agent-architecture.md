@@ -183,3 +183,20 @@ replayed_session = replay_session(session_id, event_store)
 ```
 
 A reprodução reexecuta todas as transições e gates a partir do log imutável de eventos, garantindo paridade de 100% com o estado final ativo.
+
+---
+
+## 9. Camada de Disciplina Epistêmica
+
+A partir da versão 1.2, todos os agentes e artefatos incorporam a **Camada de Disciplina Epistêmica** (`schemas/epistemic.py`):
+
+1. **Separação Estruturada de Conhecimento (`EpistemicSection`)**: As propostas arquiteturais carregam `epistemic_section` dividida em:
+   - `facts`: Fatos verificados fornecidos no `ProblemContext`.
+   - `assumptions`: Premissas declaradas com razão e condição de invalidação.
+   - `inferences`: Inferências lógicas com rastreabilidade formal via `depends_on`.
+   - `unknowns`: Incógnitas críticas preservadas.
+   - `conditional_recommendations`: Recomendações sob guarda (`IF ... THEN ... ELSE ...`).
+2. **Anti-Sofisticação por Padrão**: O Arquiteto é impedido de prescrever componentes pesados (Kafka, K8s, sharding) sem evidências factuais de throughput ou guardas condicionais.
+3. **Auditoria de Risco Epistêmico (`EPISTEMIC_RISK`)**: O Auditor/SRE audita explicitamente suposições tácitas, fatos inventados e incógnitas ignoradas.
+4. **Preservação de Limites no Facilitador e Decisor**: A síntese do Facilitador e a decisão do Decisor mantêm estrita rastreabilidade factual e emitem `INSUFFICIENT_EVIDENCE` quando os fatos forem insuficientes.
+

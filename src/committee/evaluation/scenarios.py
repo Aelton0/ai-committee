@@ -6,10 +6,18 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field
 
 from schemas.audit import AuditCategory, AuditFinding, AuditReport
-from schemas.common import CommitteeRole, CommitteeState, DecisionStatus, Severity
-from schemas.context import ProblemContext
+from schemas.common import CommitteeRole, CommitteeState, Confidence, DecisionStatus, Severity
+from schemas.context import ProblemContext, Unknown
 from schemas.decision import DecisionRecord
 from schemas.defense import ArchitectDefense, PragmaticDefense
+from schemas.epistemic import (
+    AssumptionItem,
+    ConditionalRecommendation,
+    FactItem,
+    InferenceItem,
+    RecommendationItem,
+    UnknownItem,
+)
 from schemas.learning import (
     LearningPathStep,
     LearningReference,
@@ -25,7 +33,7 @@ from schemas.proposals import (
     ReversibilityLevel,
 )
 from schemas.synthesis import DeliberationSynthesis
-from src.committee.evaluation.models import EvaluationCriterion
+from src.committee.evaluation.models import EpistemicCriterion, EvaluationCriterion
 from src.committee.llm.mock import MockLLMProvider
 from src.committee.session import Session
 
@@ -255,8 +263,174 @@ def _build_scenario_8(session_id: UUID) -> Session:
     return session
 
 
+def _build_scenario_9(session_id: UUID) -> Session:
+    """Scenario 9: Fato inventado (proposal invents 50k req/s not present in ProblemContext)."""
+    session = _build_base_session(session_id)
+    prop = session.proposals[CommitteeRole.ARCHITECT]
+    new_facts = list(prop.epistemic_section.facts) + [
+        FactItem(
+            id="FACT-INV-1",
+            statement="O sistema atual processa 50000 req/s em regime contínuo.",
+            source="unverified",
+            verified=False,
+        )
+    ]
+    session.proposals[CommitteeRole.ARCHITECT] = prop.model_copy(
+        update={
+            "solution": "Arquitetura distribuída com cluster Kafka dimensionado para 50.000 req/s.",
+            "epistemic_section": prop.epistemic_section.model_copy(update={"facts": new_facts}),
+        }
+    )
+    return session
+
+
+def _build_scenario_10(session_id: UUID) -> Session:
+    """Scenario 10: Premissa oculta (proposal assumes 20% annual growth without declaring it in assumptions)."""
+    session = _build_base_session(session_id)
+    prop = session.proposals[CommitteeRole.ARCHITECT]
+    session.proposals[CommitteeRole.ARCHITECT] = prop.model_copy(
+        update={
+            "solution": "Arquitetura dimensionada para suportar crescimento anual de 20% no tráfego.",
+            "rationale": "A equipe aprenderá em 2 semanas a operar os novos serviços distribuídos.",
+            "assumptions": [],
+            "epistemic_section": prop.epistemic_section.model_copy(
+                update={"assumptions": [], "inferences": []}
+            ),
+        }
+    )
+    return session
+
+
+def _build_scenario_11(session_id: UUID) -> Session:
+    """Scenario 11: Premissa explícita (same 20% growth declared with invalidation condition and impact)."""
+    session = _build_base_session(session_id)
+    prop = session.proposals[CommitteeRole.ARCHITECT]
+    asm = [
+        AssumptionItem(
+            id="A1",
+            statement="Crescimento anual de 20% no volume de dados",
+            reason="Projeção baseada no histórico preliminar do negócio",
+            confidence=Confidence.MEDIUM,
+            invalidation_condition="Se o crescimento nos próximos 6 meses for menor que 5%",
+            risk_level=Severity.MEDIUM,
+        )
+    ]
+    session.proposals[CommitteeRole.ARCHITECT] = prop.model_copy(
+        update={
+            "solution": "Arquitetura modular projetada para absorver crescimento anual de 20% no tráfego.",
+            "rationale": "Preparação para a escala projetada sob premissa técnica verificável.",
+            "assumptions": ["Crescimento anual de 20% no volume de dados"],
+            "epistemic_section": prop.epistemic_section.model_copy(update={"assumptions": asm}),
+        }
+    )
+    return session
+
+
+def _build_scenario_12(session_id: UUID) -> Session:
+    """Scenario 12: Incógnita ignorada (context specifies unknown peak throughput, proposals ignore it)."""
+    session = _build_base_session(session_id)
+    session.problem_context = session.problem_context.model_copy(
+        update={
+            "unknowns": [
+                Unknown(
+                    id="UNK-PEAK-01",
+                    description="Taxa de pico de requisições por segundo durante campanhas de marketing é desconhecida.",
+                    impact_if_adverse=Severity.HIGH,
+                )
+            ]
+        }
+    )
+    prop_a = session.proposals[CommitteeRole.ARCHITECT]
+    prop_b = session.proposals[CommitteeRole.PRAGMATIST]
+    session.proposals[CommitteeRole.ARCHITECT] = prop_a.model_copy(
+        update={
+            "solution": "Single deployable service on AWS ECS with PostgreSQL backend.",
+            "rationale": "Standard service isolation pattern.",
+            "risks": ["Database connection limits"],
+            "epistemic_section": prop_a.epistemic_section.model_copy(
+                update={"unknowns": [], "conditional_recommendations": []}
+            ),
+        }
+    )
+    session.proposals[CommitteeRole.PRAGMATIST] = prop_b.model_copy(
+        update={
+            "solution": "Modular monolith on basic virtual machine.",
+            "rationale": "Simplest possible architecture.",
+            "risks": ["Server downtime during updates"],
+            "epistemic_section": prop_b.epistemic_section.model_copy(
+                update={"unknowns": [], "conditional_recommendations": []}
+            ),
+        }
+    )
+    return session
+
+
+def _build_scenario_13(session_id: UUID) -> Session:
+    """Scenario 13: Recomendação condicional (proposal uses IF throughput > X THEN shard database)."""
+    session = _build_base_session(session_id)
+    prop_a = session.proposals[CommitteeRole.ARCHITECT]
+    cr = [
+        ConditionalRecommendation(
+            condition="IF throughput ultrapassar 10000 req/s",
+            recommendation="THEN particionar banco e adotar Kafka cluster",
+            evidence=["F1"],
+        )
+    ]
+    session.proposals[CommitteeRole.ARCHITECT] = prop_a.model_copy(
+        update={
+            "solution": "PostgreSQL com réplicas de leitura. IF throughput ultrapassar 10000 req/s THEN particionar banco e adotar Kafka cluster.",
+            "epistemic_section": prop_a.epistemic_section.model_copy(
+                update={"conditional_recommendations": cr}
+            ),
+        }
+    )
+    return session
+
+
+def _build_scenario_14(session_id: UUID) -> Session:
+    """Scenario 14: Incerteza honesta (decision record correctly emits INSUFFICIENT_EVIDENCE when context has critical unknowns)."""
+    session = _build_base_session(session_id)
+    session.problem_context = session.problem_context.model_copy(
+        update={
+            "unknowns": [
+                Unknown(
+                    id="UNK-SCALE-01",
+                    description="Pico de carga e volume de transações por segundo desconhecidos.",
+                    impact_if_adverse=Severity.HIGH,
+                )
+            ]
+        }
+    )
+    unk_list = [
+        UnknownItem(
+            id="UNK-SCALE-01",
+            statement="Pico de carga e volume de transações por segundo desconhecidos.",
+            impact_if_adverse=Severity.HIGH,
+        )
+    ]
+    prop_a = session.proposals[CommitteeRole.ARCHITECT]
+    prop_b = session.proposals[CommitteeRole.PRAGMATIST]
+    session.proposals[CommitteeRole.ARCHITECT] = prop_a.model_copy(
+        update={"epistemic_section": prop_a.epistemic_section.model_copy(update={"unknowns": unk_list})}
+    )
+    session.proposals[CommitteeRole.PRAGMATIST] = prop_b.model_copy(
+        update={"epistemic_section": prop_b.epistemic_section.model_copy(update={"unknowns": unk_list})}
+    )
+    session.decision_record = session.decision_record.model_copy(
+        update={
+            "status": DecisionStatus.INSUFFICIENT_EVIDENCE,
+            "chosen_alternative": None,
+            "rationale": "Impossível decidir arquitetura definitiva sem mensurar o pico de carga real.",
+            "information_that_could_change_decision": ["Métricas de pico de carga"],
+            "uncertainties": ["Pico de carga e volume de transações"],
+            "confidence": Confidence.LOW,
+        }
+    )
+    return session
+
+
 def create_default_scenario_registry() -> ScenarioRegistry:
-    """Create and populate the ScenarioRegistry with the 8 canonical benchmark scenarios."""
+    """Create and populate the ScenarioRegistry with canonical benchmark scenarios."""
     reg = ScenarioRegistry()
 
     reg.register(
@@ -358,6 +532,84 @@ def create_default_scenario_registry() -> ScenarioRegistry:
                 "failed": [EvaluationCriterion.LEARNING_VALUE],
             },
             session_builder=_build_scenario_8,
+        )
+    )
+
+    reg.register(
+        BenchmarkScenario(
+            id="scenario-09-invented-fact",
+            description="Proposal invents 50k req/s metric not provided in ProblemContext.",
+            expected_properties={
+                "max_score": {EpistemicCriterion.FACT_GROUNDING: 2.0},
+                "failed": [EpistemicCriterion.FACT_GROUNDING],
+            },
+            session_builder=_build_scenario_9,
+        )
+    )
+
+    reg.register(
+        BenchmarkScenario(
+            id="scenario-10-hidden-assumption",
+            description="Proposal assumes 20% annual volume growth and 2-week team learning curve without declaring them as assumptions.",
+            expected_properties={
+                "max_score": {EpistemicCriterion.ASSUMPTION_TRANSPARENCY: 2.5},
+                "failed": [EpistemicCriterion.ASSUMPTION_TRANSPARENCY],
+            },
+            session_builder=_build_scenario_10,
+        )
+    )
+
+    reg.register(
+        BenchmarkScenario(
+            id="scenario-11-explicit-assumption",
+            description="Proposal explicitly declares 20% volume growth with rationale and invalidation condition.",
+            expected_properties={
+                "min_score": {EpistemicCriterion.ASSUMPTION_TRANSPARENCY: 4.5},
+                "passed": [EpistemicCriterion.ASSUMPTION_TRANSPARENCY],
+            },
+            session_builder=_build_scenario_11,
+        )
+    )
+
+    reg.register(
+        BenchmarkScenario(
+            id="scenario-12-unknown-ignored",
+            description="Problem context specifies critical unknown peak throughput, but proposals ignore it completely.",
+            expected_properties={
+                "max_score": {EpistemicCriterion.UNKNOWN_VISIBILITY: 2.5},
+                "failed": [EpistemicCriterion.UNKNOWN_VISIBILITY],
+            },
+            session_builder=_build_scenario_12,
+        )
+    )
+
+    reg.register(
+        BenchmarkScenario(
+            id="scenario-13-conditional-recommendation",
+            description="Proposal formulates guarded conditional recommendations (IF throughput > X THEN shard database).",
+            expected_properties={
+                "min_score": {EpistemicCriterion.RECOMMENDATION_GROUNDING: 4.5},
+                "passed": [EpistemicCriterion.RECOMMENDATION_GROUNDING],
+            },
+            session_builder=_build_scenario_13,
+        )
+    )
+
+    reg.register(
+        BenchmarkScenario(
+            id="scenario-14-proper-uncertainty",
+            description="Decision record emits INSUFFICIENT_EVIDENCE and acknowledges critical unknown metrics.",
+            expected_properties={
+                "min_score": {
+                    EpistemicCriterion.UNKNOWN_VISIBILITY: 4.5,
+                    EpistemicCriterion.EPISTEMIC_INTEGRITY: 4.5,
+                },
+                "passed": [
+                    EpistemicCriterion.UNKNOWN_VISIBILITY,
+                    EpistemicCriterion.EPISTEMIC_INTEGRITY,
+                ],
+            },
+            session_builder=_build_scenario_14,
         )
     )
 

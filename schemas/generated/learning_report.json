@@ -1,5 +1,43 @@
 {
   "$defs": {
+    "EpistemicLesson": {
+      "additionalProperties": false,
+      "description": "Pedagogical lesson highlighting epistemological clarity and trade-offs.",
+      "properties": {
+        "concept": {
+          "description": "Underlying theoretical concept",
+          "minLength": 3,
+          "title": "Concept",
+          "type": "string"
+        },
+        "debate_example": {
+          "description": "Specific occurrence in the deliberation",
+          "minLength": 5,
+          "title": "Debate Example",
+          "type": "string"
+        },
+        "epistemic_confusion": {
+          "description": "Observed confusion, e.g. treating an assumption as an established fact",
+          "minLength": 5,
+          "title": "Epistemic Confusion",
+          "type": "string"
+        },
+        "study_topic": {
+          "description": "Recommended theory/practice topic to explore",
+          "minLength": 3,
+          "title": "Study Topic",
+          "type": "string"
+        }
+      },
+      "required": [
+        "concept",
+        "debate_example",
+        "epistemic_confusion",
+        "study_topic"
+      ],
+      "title": "EpistemicLesson",
+      "type": "object"
+    },
     "LearningPathStep": {
       "additionalProperties": false,
       "description": "Structured step in the recommended self-study progression.",
@@ -189,6 +227,13 @@
         "$ref": "#/$defs/ObservedKnowledgeGap"
       },
       "title": "Observed Knowledge Gaps",
+      "type": "array"
+    },
+    "epistemic_lessons": {
+      "items": {
+        "$ref": "#/$defs/EpistemicLesson"
+      },
+      "title": "Epistemic Lessons",
       "type": "array"
     },
     "study_questions": {

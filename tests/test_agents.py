@@ -66,38 +66,43 @@ def test_mock_provider_produces_valid_schemas_for_all_agents() -> None:
         provider = MockLLMProvider()
         runner = AgentRunner(provider)
 
-        context = {"problem_statement": "Valid test problem."}
+        div_context = {"phase": "PHASE_1_DIVERGENCE", "problem_statement": "Valid test problem."}
+        aud_context = {"phase": "PHASE_2_CONFRONTATION", "architect_proposal": {"summary": "arch"}}
+        def_context = {"phase": "PHASE_3_DEFENSE", "audit_report": {"summary": "audit"}}
+        conv_context = {"phase": "PHASE_4_CONVERGENCE", "audit_report": {"summary": "audit"}}
+        dec_context = {"phase": "PHASE_5_DECISION", "deliberation_synthesis": {"summary": "synth"}}
+        ref_context = {"phase": "PHASE_6_REFLECTION", "decision_record": {"summary": "dec"}}
 
         # Architect
-        arch_res = await runner.run(ArchitectAgent(), context, output_schema=ArchitectProposal)
+        arch_res = await runner.run(ArchitectAgent(), div_context, output_schema=ArchitectProposal)
         assert isinstance(arch_res, ArchitectProposal)
 
         # Pragmatic
-        prag_res = await runner.run(PragmaticAgent(), context, output_schema=PragmaticProposal)
+        prag_res = await runner.run(PragmaticAgent(), div_context, output_schema=PragmaticProposal)
         assert isinstance(prag_res, PragmaticProposal)
 
         # Auditor
-        aud_res = await runner.run(AuditorAgent(), context, output_schema=AuditReport)
+        aud_res = await runner.run(AuditorAgent(), aud_context, output_schema=AuditReport)
         assert isinstance(aud_res, AuditReport)
 
         # Architect Defense
-        arch_def = await runner.run(ArchitectAgent(), context, output_schema=ArchitectDefense)
+        arch_def = await runner.run(ArchitectAgent(), def_context, output_schema=ArchitectDefense)
         assert isinstance(arch_def, ArchitectDefense)
 
         # Pragmatic Defense
-        prag_def = await runner.run(PragmaticAgent(), context, output_schema=PragmaticDefense)
+        prag_def = await runner.run(PragmaticAgent(), def_context, output_schema=PragmaticDefense)
         assert isinstance(prag_def, PragmaticDefense)
 
         # Facilitator Synthesis
-        fac_res = await runner.run(FacilitatorAgent(), context, output_schema=DeliberationSynthesis)
+        fac_res = await runner.run(FacilitatorAgent(), conv_context, output_schema=DeliberationSynthesis)
         assert isinstance(fac_res, DeliberationSynthesis)
 
         # Decision Maker
-        dec_res = await runner.run(DecisionMakerAgent(), context, output_schema=DecisionRecord)
+        dec_res = await runner.run(DecisionMakerAgent(), dec_context, output_schema=DecisionRecord)
         assert isinstance(dec_res, DecisionRecord)
 
         # Mentor
-        men_res = await runner.run(MentorAgent(), context, output_schema=LearningReport)
+        men_res = await runner.run(MentorAgent(), ref_context, output_schema=LearningReport)
         assert isinstance(men_res, LearningReport)
 
     asyncio.run(_test())

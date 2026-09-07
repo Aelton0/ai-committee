@@ -22,6 +22,7 @@ class AuditCategory(str, Enum):
     FRAGILE_ASSUMPTIONS = "fragile_assumptions"
     OVERENGINEERING = "overengineering"
     UNDERENGINEERING = "underengineering"
+    EPISTEMIC_RISK = "epistemic_risk"
 
 
 class AuditFinding(BaseModel):

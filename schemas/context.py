@@ -164,3 +164,31 @@ class ProblemContext(BaseArtifact):
     def unanswered_questions(self) -> list[OpenQuestion]:
         """Return the list of open questions that have not yet been answered."""
         return [q for q in self.open_questions if q.answer is None]
+
+    def fact_ids(self) -> set[str]:
+        """Return all declared Fact identifiers."""
+        return {f.id for f in self.facts}
+
+    def assumption_ids(self) -> set[str]:
+        """Return all declared Assumption identifiers."""
+        return {a.id for a in self.assumptions}
+
+    def unknown_ids(self) -> set[str]:
+        """Return all declared Unknown identifiers."""
+        return {u.id for u in self.unknowns}
+
+    def constraint_ids(self) -> set[str]:
+        """Return all declared Constraint identifiers."""
+        return {c.id for c in self.constraints}
+
+    def get_fact(self, fact_id: str) -> Fact | None:
+        """Look up a Fact by identifier."""
+        return next((f for f in self.facts if f.id == fact_id), None)
+
+    def get_assumption(self, assumption_id: str) -> Assumption | None:
+        """Look up an Assumption by identifier."""
+        return next((a for a in self.assumptions if a.id == assumption_id), None)
+
+    def get_unknown(self, unknown_id: str) -> Unknown | None:
+        """Look up an Unknown by identifier."""
+        return next((u for u in self.unknowns if u.id == unknown_id), None)

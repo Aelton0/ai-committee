@@ -5,7 +5,7 @@ from typing import Any
 from pydantic import BaseModel
 from schemas.common import CommitteeRole
 from schemas.learning import LearningReport
-from src.committee.agents.base import BaseAgent
+from src.committee.agents.base import BaseAgent, ContextIsolationError
 
 
 class MentorAgent(BaseAgent):
@@ -24,4 +24,10 @@ class MentorAgent(BaseAgent):
         return LearningReport
 
     def validate_input_context(self, context: dict[str, Any]) -> None:
-        pass
+        forbidden: list[tuple[str, str]] = []
+        allowed_phases = {"PHASE_6_REFLECTION", "REFLECTION"}
+        required = {
+            "PHASE_6_REFLECTION": [("decision_record", "problem_context", "problem_statement")],
+            "REFLECTION": [("decision_record", "problem_context", "problem_statement")],
+        }
+        self._validate_context_policy(context, allowed_phases, required, forbidden)

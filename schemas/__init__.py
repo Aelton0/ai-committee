@@ -50,6 +50,16 @@ from schemas.defense import (
     PragmaticDefense,
     ProposalAction,
 )
+from schemas.epistemic import (
+    AssumptionItem,
+    ConditionalRecommendation,
+    EpistemicCategory,
+    EpistemicSection,
+    FactItem,
+    InferenceItem,
+    RecommendationItem,
+    UnknownItem,
+)
 from schemas.events import (
     CriticalErrorPayload,
     EventEnvelope,
@@ -72,6 +82,7 @@ from schemas.intervention import (
     UserRespondCommand,
 )
 from schemas.learning import (
+    EpistemicLesson,
     LearningPathStep,
     LearningReference,
     LearningReport,
@@ -87,6 +98,7 @@ from schemas.proposals import (
     ReversibilityLevel,
 )
 from schemas.synthesis import (
+    AlternativeArguments,
     DeliberationSynthesis,
     TradeOffDimension,
 )
@@ -140,6 +152,7 @@ __all__ = [
     "PragmaticDefense",
     "ProposalAction",
     # Synthesis
+    "AlternativeArguments",
     "DeliberationSynthesis",
     "TradeOffDimension",
     # Decision
@@ -149,10 +162,20 @@ __all__ = [
     "ReviewTrigger",
     "TradeOffContract",
     # Learning
+    "EpistemicLesson",
     "LearningPathStep",
     "LearningReference",
     "LearningReport",
     "ObservedKnowledgeGap",
+    # Epistemic Discipline
+    "EpistemicCategory",
+    "FactItem",
+    "AssumptionItem",
+    "InferenceItem",
+    "UnknownItem",
+    "ConditionalRecommendation",
+    "RecommendationItem",
+    "EpistemicSection",
     # Intervention
     "AssumptionContestAction",
     "BaseHumanIntervention",

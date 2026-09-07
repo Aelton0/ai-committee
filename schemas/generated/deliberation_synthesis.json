@@ -1,5 +1,30 @@
 {
   "$defs": {
+    "AlternativeArguments": {
+      "additionalProperties": false,
+      "description": "Arguments mapped to an alternative or proposal.",
+      "properties": {
+        "alternative_id": {
+          "description": "Alternative identifier (e.g. 'PROPOSAL_A', 'PROPOSAL_B', 'architect_proposal_001')",
+          "minLength": 1,
+          "title": "Alternative Id",
+          "type": "string"
+        },
+        "arguments": {
+          "description": "Arguments supporting or defending this alternative",
+          "items": {
+            "type": "string"
+          },
+          "title": "Arguments",
+          "type": "array"
+        }
+      },
+      "required": [
+        "alternative_id"
+      ],
+      "title": "AlternativeArguments",
+      "type": "object"
+    },
     "TradeOffDimension": {
       "additionalProperties": false,
       "description": "Comparative evaluation of a single architectural or strategic trade-off dimension.",
@@ -114,6 +139,13 @@
       "title": "Consolidated Assumptions",
       "type": "array"
     },
+    "consolidated_inferences": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Consolidated Inferences",
+      "type": "array"
+    },
     "consolidated_unknowns": {
       "items": {
         "type": "string"
@@ -136,15 +168,12 @@
       "type": "array"
     },
     "arguments_by_alternative": {
-      "additionalProperties": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
+      "description": "List of arguments grouped by alternative identifier",
+      "items": {
+        "$ref": "#/$defs/AlternativeArguments"
       },
-      "description": "Keyed by alternative identifier (e.g. 'PROPOSAL_A', 'PROPOSAL_B')",
       "title": "Arguments By Alternative",
-      "type": "object"
+      "type": "array"
     },
     "unresolved_risks": {
       "items": {

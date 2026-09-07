@@ -1,5 +1,93 @@
 {
   "$defs": {
+    "AssumptionItem": {
+      "additionalProperties": false,
+      "description": "Working hypothesis provisionally adopted when factual evidence is insufficient.",
+      "properties": {
+        "id": {
+          "description": "Identifier, e.g. A1, ASM-1",
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "statement": {
+          "description": "Hypothesis statement",
+          "minLength": 3,
+          "title": "Statement",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Technical or operational reason for assuming this",
+          "minLength": 3,
+          "title": "Reason",
+          "type": "string"
+        },
+        "confidence": {
+          "$ref": "#/$defs/Confidence",
+          "default": "MEDIUM"
+        },
+        "invalidation_condition": {
+          "description": "Measurable or observable condition that invalidates this assumption",
+          "minLength": 3,
+          "title": "Invalidation Condition",
+          "type": "string"
+        },
+        "risk_level": {
+          "$ref": "#/$defs/Severity",
+          "default": "MEDIUM"
+        }
+      },
+      "required": [
+        "id",
+        "statement",
+        "reason",
+        "invalidation_condition"
+      ],
+      "title": "AssumptionItem",
+      "type": "object"
+    },
+    "ConditionalRecommendation": {
+      "additionalProperties": false,
+      "description": "Recommendation guarded by an explicit condition when the underlying need is unproven.",
+      "properties": {
+        "condition": {
+          "description": "Pre-condition, e.g. 'IF peak throughput > 2,000 req/s'",
+          "minLength": 3,
+          "title": "Condition",
+          "type": "string"
+        },
+        "recommendation": {
+          "description": "Guarded proposal, e.g. 'THEN adopt Redis Streams'",
+          "minLength": 3,
+          "title": "Recommendation",
+          "type": "string"
+        },
+        "evidence": {
+          "description": "IDs of facts, assumptions, or inferences underpinning the condition/action",
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "condition",
+        "recommendation"
+      ],
+      "title": "ConditionalRecommendation",
+      "type": "object"
+    },
+    "Confidence": {
+      "description": "Confidence levels for assessments and recommendations.",
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH"
+      ],
+      "title": "Confidence",
+      "type": "string"
+    },
     "CostEstimate": {
       "additionalProperties": false,
       "description": "Structured breakdown of financial and engineering costs.",
@@ -37,6 +125,193 @@
       ],
       "title": "EffortLevel",
       "type": "string"
+    },
+    "EpistemicSection": {
+      "additionalProperties": false,
+      "description": "Aggregated epistemic breakdown answering: What do I know? What do I assume/infer/not know/recommend?",
+      "properties": {
+        "facts": {
+          "description": "What do I know? (Verified facts grounded in ProblemContext)",
+          "items": {
+            "$ref": "#/$defs/FactItem"
+          },
+          "title": "Facts",
+          "type": "array"
+        },
+        "assumptions": {
+          "description": "What am I assuming? (Hypotheses adopted provisionally)",
+          "items": {
+            "$ref": "#/$defs/AssumptionItem"
+          },
+          "title": "Assumptions",
+          "type": "array"
+        },
+        "inferences": {
+          "description": "What am I inferring? (Logical deductions from facts/assumptions)",
+          "items": {
+            "$ref": "#/$defs/InferenceItem"
+          },
+          "title": "Inferences",
+          "type": "array"
+        },
+        "unknowns": {
+          "description": "What don't I know? (Explicit gaps and unmeasured variables)",
+          "items": {
+            "$ref": "#/$defs/UnknownItem"
+          },
+          "title": "Unknowns",
+          "type": "array"
+        },
+        "conditional_recommendations": {
+          "description": "What do I recommend conditionally? (IF condition THEN action)",
+          "items": {
+            "$ref": "#/$defs/ConditionalRecommendation"
+          },
+          "title": "Conditional Recommendations",
+          "type": "array"
+        },
+        "recommendations": {
+          "description": "What do I recommend unconditionally?",
+          "items": {
+            "$ref": "#/$defs/RecommendationItem"
+          },
+          "title": "Recommendations",
+          "type": "array"
+        }
+      },
+      "title": "EpistemicSection",
+      "type": "object"
+    },
+    "FactItem": {
+      "additionalProperties": false,
+      "description": "Objective, verified datum directly provided by the user or derived deterministically.",
+      "properties": {
+        "id": {
+          "description": "Identifier, e.g. F1, FACT-1",
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "statement": {
+          "description": "Objective verified fact",
+          "minLength": 3,
+          "title": "Statement",
+          "type": "string"
+        },
+        "source": {
+          "description": "Origin, e.g. User input, metrics, logs",
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "verified": {
+          "default": true,
+          "title": "Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "statement",
+        "source"
+      ],
+      "title": "FactItem",
+      "type": "object"
+    },
+    "InferenceItem": {
+      "additionalProperties": false,
+      "description": "Intermediate conclusion deduced logically from facts and/or declared assumptions.",
+      "properties": {
+        "id": {
+          "description": "Identifier, e.g. I1, INF-1",
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "statement": {
+          "description": "Intermediate logical conclusion",
+          "minLength": 3,
+          "title": "Statement",
+          "type": "string"
+        },
+        "rationale": {
+          "description": "Logical argument deriving this inference",
+          "minLength": 3,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "depends_on": {
+          "description": "List of Fact or Assumption IDs supporting this inference, e.g. ['F1', 'A1']",
+          "items": {
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "confidence": {
+          "$ref": "#/$defs/Confidence",
+          "default": "MEDIUM"
+        }
+      },
+      "required": [
+        "id",
+        "statement",
+        "rationale"
+      ],
+      "title": "InferenceItem",
+      "type": "object"
+    },
+    "RecommendationItem": {
+      "additionalProperties": false,
+      "description": "Action or architectural choice proposed by an agent.",
+      "properties": {
+        "id": {
+          "default": "",
+          "title": "Id",
+          "type": "string"
+        },
+        "statement": {
+          "description": "Recommended architectural or design choice",
+          "minLength": 3,
+          "title": "Statement",
+          "type": "string"
+        },
+        "rationale": {
+          "default": "",
+          "title": "Rationale",
+          "type": "string"
+        },
+        "depends_on": {
+          "description": "IDs of inferences, assumptions, or facts underpinning this recommendation",
+          "items": {
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "is_conditional": {
+          "default": false,
+          "title": "Is Conditional",
+          "type": "boolean"
+        },
+        "condition": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Condition"
+        }
+      },
+      "required": [
+        "statement"
+      ],
+      "title": "RecommendationItem",
+      "type": "object"
     },
     "ReversibilityAssessment": {
       "additionalProperties": false,
@@ -90,6 +365,47 @@
       ],
       "title": "Severity",
       "type": "string"
+    },
+    "UnknownItem": {
+      "additionalProperties": false,
+      "description": "Relevant piece of information that is currently missing, unmeasured, or unknowable.",
+      "properties": {
+        "id": {
+          "description": "Identifier, e.g. U1, UNK-1",
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "statement": {
+          "description": "Missing information description",
+          "minLength": 3,
+          "title": "Statement",
+          "type": "string"
+        },
+        "impact_if_adverse": {
+          "$ref": "#/$defs/Severity",
+          "default": "HIGH"
+        },
+        "how_to_resolve": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Suggested action, measurement, or spike to resolve this unknown",
+          "title": "How To Resolve"
+        }
+      },
+      "required": [
+        "id",
+        "statement"
+      ],
+      "title": "UnknownItem",
+      "type": "object"
     }
   },
   "additionalProperties": false,
@@ -206,6 +522,9 @@
       "minItems": 1,
       "title": "Invalidation Conditions",
       "type": "array"
+    },
+    "epistemic_section": {
+      "$ref": "#/$defs/EpistemicSection"
     },
     "modularity_strategy": {
       "anyOf": [

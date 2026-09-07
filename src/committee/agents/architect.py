@@ -32,13 +32,15 @@ class ArchitectAgent(BaseAgent):
         return ArchitectProposal
 
     def validate_input_context(self, context: dict[str, Any]) -> None:
-        # Blind divergence check (Phase 1)
-        if "pragmatic_proposal" in context and context["pragmatic_proposal"] is not None:
-            raise ContextIsolationError(
-                "Blind divergence violated: Architect received Pragmatic proposal."
-            )
-        # Defense isolation check (Phase 3)
-        if "pragmatic_defense" in context and context["pragmatic_defense"] is not None:
-            raise ContextIsolationError(
-                "Defense isolation violated: Architect received Pragmatic defense."
-            )
+        forbidden = [
+            ("pragmatic_proposal", "Blind divergence violated: Architect received Pragmatic proposal."),
+            ("pragmatic_defense", "Defense isolation violated: Architect received Pragmatic defense."),
+        ]
+        allowed_phases = {"PHASE_1_DIVERGENCE", "DIVERGENCE", "PHASE_3_DEFENSE", "DEFENSE"}
+        required = {
+            "PHASE_1_DIVERGENCE": [("problem_context", "problem_statement")],
+            "DIVERGENCE": [("problem_context", "problem_statement")],
+            "PHASE_3_DEFENSE": ["audit_report"],
+            "DEFENSE": ["audit_report"],
+        }
+        self._validate_context_policy(context, allowed_phases, required, forbidden)

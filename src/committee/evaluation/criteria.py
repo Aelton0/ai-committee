@@ -6,6 +6,7 @@ from typing import Any
 from schemas.common import CommitteeRole, DecisionStatus, Severity
 from src.committee.evaluation.models import (
     CriterionScore,
+    EpistemicCriterion,
     EvaluationCriterion,
     EvaluationFinding,
 )
@@ -491,18 +492,48 @@ def evaluate_synthesis_neutrality(
         " ".join(synthesis.divergence_points),
         " ".join(synthesis.unresolved_risks),
         " ".join(synthesis.open_questions),
-        " ".join([f"{k} {v}" for k, v in synthesis.arguments_by_alternative.items()]),
+        " ".join([
+            f"{k} {v}"
+            for k, v in (
+                synthesis.arguments_dict
+                if hasattr(synthesis, "arguments_dict")
+                else (
+                    synthesis.arguments_by_alternative.items()
+                    if isinstance(synthesis.arguments_by_alternative, dict)
+                    else {a.alternative_id: a.arguments for a in synthesis.arguments_by_alternative}.items()
+                )
+            ).items()
+        ]),
         " ".join([f"{t.dimension} {t.notes or ''}" for t in synthesis.trade_offs]),
     ]).lower()
 
     biased_patterns = [
+        # Portuguese patterns
         r"recomendo a proposta",
         r"recomendo a alternativa",
+        r"recomendo fortemente",
+        r"sugiro a proposta",
+        r"sugiro a alternativa",
         r"a melhor opç[aã]o [eé]",
+        r"a melhor escolha [eé]",
+        r"melhor alternativa [eé]",
         r"devemos escolher",
+        r"deve-se escolher",
         r"a proposta [ab] [eé] superior",
+        r"proposta vencedora",
         r"vencedora [eé]",
         r"escolha final",
+        r"opto pela proposta",
+        # English patterns
+        r"i recommend the proposal",
+        r"i recommend proposal",
+        r"i recommend option",
+        r"the best option is",
+        r"the best choice is",
+        r"we should choose",
+        r"the winning proposal",
+        r"final choice",
+        r"proposal [ab] is superior",
     ]
 
     detected_bias: list[str] = []
@@ -994,4 +1025,483 @@ def evaluate_human_sovereignty(
             passed=True,
         ),
         findings,
+    )
+
+
+# ==============================================================================
+# EPISTEMIC DISCIPLINE EVALUATION CRITERIA
+# ==============================================================================
+
+def evaluate_fact_grounding(
+    session: Session,
+) -> tuple[CriterionScore, list[EvaluationFinding]]:
+    """Evaluate whether claimed facts are grounded in ProblemContext and not invented."""
+    crit = EpistemicCriterion.FACT_GROUNDING
+    findings: list[EvaluationFinding] = []
+    evidence: list[str] = []
+
+    if not session.problem_context:
+        return (
+            CriterionScore(
+                criterion=crit,
+                score=0.0,
+                evidence=["ProblemContext is absent from session."],
+                severity=Severity.HIGH,
+                notes="Cannot evaluate fact grounding without ProblemContext.",
+                passed=False,
+            ),
+            [
+                EvaluationFinding(
+                    id="F-EPI-FACT-00",
+                    criterion=crit,
+                    severity=Severity.HIGH,
+                    description="ProblemContext ausente.",
+                    evidence="Nenhum contexto de problema registrado.",
+                )
+            ],
+        )
+
+    ctx_text = (
+        session.problem_context.problem
+        + " "
+        + " ".join(f.description for f in session.problem_context.facts)
+        + " "
+        + " ".join(c.description for c in session.problem_context.constraints)
+    ).lower()
+
+    # Extract all numbers from context
+    ctx_numbers = set(re.findall(r"\b\d+[\d.,]*\b", ctx_text))
+    # Remove dots and commas for flexible matching
+    normalized_ctx_numbers = {n.replace(".", "").replace(",", "") for n in ctx_numbers}
+
+    invented_facts: list[str] = []
+
+    for role, prop in session.proposals.items():
+        # Check epistemic_section facts
+        if hasattr(prop, "epistemic_section") and prop.epistemic_section.facts:
+            for f in prop.epistemic_section.facts:
+                f_stmt = f.statement.lower()
+                f_numbers = set(re.findall(r"\b\d+[\d.,]*\b", f_stmt))
+                normalized_f_numbers = {n.replace(".", "").replace(",", "") for n in f_numbers}
+                
+                # Check for specific quantitative claims > 10 not present in context
+                large_unmatched = [
+                    n for n in normalized_f_numbers
+                    if n not in normalized_ctx_numbers and int(n) > 10 if n.isdigit()
+                ]
+                if large_unmatched:
+                    invented_facts.append(
+                        f"{role.value} epistemic_section.facts '{f.id}': '{f.statement}' (unmatched: {large_unmatched})"
+                    )
+
+        # Check raw text for claims like "50.000 req/s" or "100.000 eventos/s" when not in context
+        prop_text = (prop.title + " " + prop.solution + " " + prop.rationale).lower()
+        patterns = [
+            r"(\d+[\d.,]*\s*(?:req|requisições|rps|eventos|transações|tps|qps))",
+            r"(?:processando|recebe|suporta)\s+(\d+[\d.,]*)",
+        ]
+        for pat in patterns:
+            for match in re.finditer(pat, prop_text):
+                num_str = re.search(r"\d+[\d.,]*", match.group(0))
+                if num_str:
+                    clean_num = num_str.group(0).replace(".", "").replace(",", "")
+                    if clean_num not in normalized_ctx_numbers and clean_num.isdigit() and int(clean_num) > 10:
+                        # Check if it was explicitly declared as an assumption or conditional recommendation
+                        is_guarded = (
+                            any(clean_num in a.lower() for a in prop.assumptions)
+                            or (
+                                hasattr(prop, "epistemic_section")
+                                and any(
+                                    clean_num in a.statement.lower()
+                                    for a in prop.epistemic_section.assumptions
+                                )
+                            )
+                            or (
+                                hasattr(prop, "epistemic_section")
+                                and any(
+                                    clean_num in cr.condition.lower()
+                                    for cr in prop.epistemic_section.conditional_recommendations
+                                )
+                            )
+                        )
+                        if not is_guarded:
+                            invented_facts.append(
+                                f"{role.value} text asserts '{match.group(0)}' without grounding in ProblemContext or declaration as assumption/condition"
+                            )
+
+    if invented_facts:
+        for item in invented_facts:
+            findings.append(
+                EvaluationFinding(
+                    id="F-EPI-FACT-01",
+                    criterion=crit,
+                    severity=Severity.CRITICAL,
+                    description="Fato inventado: o agente introduziu métricas ou dados quantitativos como fatos que não foram fornecidos no ProblemContext.",
+                    evidence=item,
+                    recommendation="Remover métricas inventadas ou declará-las formalmente como ASSUMPTION sob premissas explícitas.",
+                )
+            )
+        evidence.extend(invented_facts)
+        score = 1.0
+        passed = False
+        notes = f"Detectados {len(invented_facts)} fatos inventados sem respaldo no contexto."
+    else:
+        score = 5.0
+        passed = True
+        evidence.append("All factual claims are grounded strictly in the verified ProblemContext.")
+        notes = "Fatos estritamente fundamentados no contexto do problema."
+
+    return (
+        CriterionScore(
+            criterion=crit,
+            score=score,
+            evidence=evidence,
+            notes=notes,
+            passed=passed,
+        ),
+        findings,
+    )
+
+
+def evaluate_assumption_transparency(
+    session: Session,
+) -> tuple[CriterionScore, list[EvaluationFinding]]:
+    """Evaluate whether operating hypotheses and assumptions are declared transparently."""
+    crit = EpistemicCriterion.ASSUMPTION_TRANSPARENCY
+    findings: list[EvaluationFinding] = []
+    evidence: list[str] = []
+
+    hidden_assumptions: list[str] = []
+    explicit_assumptions_count = 0
+
+    for role, prop in session.proposals.items():
+        prop_assumptions = list(prop.assumptions)
+        if hasattr(prop, "epistemic_section") and prop.epistemic_section.assumptions:
+            prop_assumptions.extend(a.statement for a in prop.epistemic_section.assumptions)
+            explicit_assumptions_count += len(prop.epistemic_section.assumptions)
+        else:
+            explicit_assumptions_count += len(prop.assumptions)
+
+        assumptions_text = " ".join(prop_assumptions).lower()
+
+        # Detect keywords in solution/rationale that indicate unstated hypotheses
+        body_text = (prop.solution + " " + prop.rationale).lower()
+        suspicious_hypotheses = [
+            (r"\b20%\b|\bcrescimento\b|\bgrowth\b", "crescimento de volume projetado"),
+            (r"\b2 semanas\b|\baprenderá\b|\baprender\b", "curva de aprendizado da equipe"),
+            (r"\bquadruplicará\b|\btriplicará\b|\bblack friday\b", "pico sazonal extraordinário"),
+        ]
+
+        # Check if the body uses any suspicious hypothesis that is absent from declared assumptions
+        # and absent from ProblemContext facts
+        ctx_facts_text = " ".join(f.description for f in session.problem_context.facts).lower() if session.problem_context else ""
+
+        for pattern, label in suspicious_hypotheses:
+            if re.search(pattern, body_text):
+                # Is it in context facts?
+                in_ctx = bool(re.search(pattern, ctx_facts_text))
+                # Is it declared in assumptions?
+                in_assumptions = bool(re.search(pattern, assumptions_text))
+                if not in_ctx and not in_assumptions:
+                    hidden_assumptions.append(
+                        f"{role.value} uses '{label}' in rationale/solution without declaring it as an explicit ASSUMPTION."
+                    )
+
+    if hidden_assumptions:
+        for item in hidden_assumptions:
+            findings.append(
+                EvaluationFinding(
+                    id="F-EPI-ASM-01",
+                    criterion=crit,
+                    severity=Severity.HIGH,
+                    description="Premissa oculta: hipótese utilizada para justificar a arquitetura sem declaração formal em assumptions.",
+                    evidence=item,
+                    recommendation="Declarar formalmente a hipótese como ASSUMPTION com razão, confiança e condição de invalidação.",
+                )
+            )
+        evidence.extend(hidden_assumptions)
+        score = 1.5
+        passed = False
+        notes = f"Detectadas {len(hidden_assumptions)} premissas ocultas não declaradas."
+    else:
+        score = 5.0
+        passed = True
+        evidence.append(f"Declared {explicit_assumptions_count} explicit assumptions transparently with invalidation conditions.")
+        notes = "Premissas declaradas de forma transparente e verificável."
+
+    return (
+        CriterionScore(
+            criterion=crit,
+            score=score,
+            evidence=evidence,
+            notes=notes,
+            passed=passed,
+        ),
+        findings,
+    )
+
+
+def evaluate_unknown_visibility(
+    session: Session,
+) -> tuple[CriterionScore, list[EvaluationFinding]]:
+    """Evaluate whether critical unknowns are recognized and preserved rather than ignored."""
+    crit = EpistemicCriterion.UNKNOWN_VISIBILITY
+    findings: list[EvaluationFinding] = []
+    evidence: list[str] = []
+
+    if not session.problem_context or not session.problem_context.unknowns:
+        return (
+            CriterionScore(
+                criterion=crit,
+                score=4.5,
+                evidence=["ProblemContext does not specify critical unknowns."],
+                notes="Sem unknowns iniciais cadastrados no ProblemContext.",
+                passed=True,
+            ),
+            findings,
+        )
+
+    context_unknowns = session.problem_context.unknowns
+    acknowledged_unknowns = 0
+
+    for unk in context_unknowns:
+        unk_keywords = [w for w in re.findall(r"\w+", unk.description.lower()) if len(w) > 3]
+        found_in_session = False
+
+        for role, prop in session.proposals.items():
+            prop_text = (
+                prop.solution
+                + " "
+                + prop.rationale
+                + " "
+                + " ".join(prop.risks)
+            ).lower()
+            if hasattr(prop, "epistemic_section"):
+                prop_text += " " + " ".join(u.statement for u in prop.epistemic_section.unknowns).lower()
+                prop_text += " " + " ".join(cr.condition for cr in prop.epistemic_section.conditional_recommendations).lower()
+
+            if any(kw in prop_text for kw in unk_keywords):
+                found_in_session = True
+                break
+
+        if found_in_session:
+            acknowledged_unknowns += 1
+            evidence.append(f"Unknown '{unk.id}' acknowledged in proposals: '{unk.description[:60]}...'")
+        else:
+            evidence.append(f"Unknown '{unk.id}' IGNORED in proposals: '{unk.description[:60]}...'")
+
+    ratio = acknowledged_unknowns / len(context_unknowns)
+    if ratio < 0.5:
+        finding = EvaluationFinding(
+            id="F-EPI-UNK-01",
+            criterion=crit,
+            severity=Severity.HIGH,
+            description="Incógnitas críticas do contexto foram ignoradas pelos agentes.",
+            evidence=f"{len(context_unknowns) - acknowledged_unknowns} de {len(context_unknowns)} unknowns não foram considerados.",
+            recommendation="Reconhecer explicitamente as incógnitas na epistemic_section.unknowns ou utilizar recomendações condicionais.",
+        )
+        findings.append(finding)
+        score = round(1.0 + (ratio * 2.0), 1)
+        passed = False
+        notes = "Incógnitas críticas do contexto foram ignoradas nas propostas."
+    else:
+        score = 5.0
+        passed = True
+        notes = "Incógnitas críticas devidamente preservadas e consideradas."
+
+    return (
+        CriterionScore(
+            criterion=crit,
+            score=score,
+            evidence=evidence,
+            notes=notes,
+            passed=passed,
+        ),
+        findings,
+    )
+
+
+def evaluate_inference_traceability(
+    session: Session,
+) -> tuple[CriterionScore, list[EvaluationFinding]]:
+    """Evaluate whether inferences trace back to declared facts and assumptions."""
+    crit = EpistemicCriterion.INFERENCE_TRACEABILITY
+    findings: list[EvaluationFinding] = []
+    evidence: list[str] = []
+
+    untraced_inferences: list[str] = []
+    traced_count = 0
+
+    for role, prop in session.proposals.items():
+        if hasattr(prop, "epistemic_section") and prop.epistemic_section.inferences:
+            missing_deps = prop.epistemic_section.validate_dependency_references()
+            if missing_deps:
+                untraced_inferences.extend(missing_deps)
+            else:
+                traced_count += len(prop.epistemic_section.inferences)
+                evidence.append(f"{role.value} declared {len(prop.epistemic_section.inferences)} fully traced inferences.")
+        else:
+            evidence.append(f"{role.value} did not declare structured inferences.")
+
+    if untraced_inferences:
+        for item in untraced_inferences:
+            findings.append(
+                EvaluationFinding(
+                    id="F-EPI-INF-01",
+                    criterion=crit,
+                    severity=Severity.HIGH,
+                    description="Inferência com dependências não declaradas ou inexistentes.",
+                    evidence=item,
+                    recommendation="Garantir que todo depends_on referencie IDs de FACT ou ASSUMPTION válidos.",
+                )
+            )
+        score = 2.0
+        passed = False
+        notes = "Inferências com dependências quebradas ou não declaradas."
+    else:
+        score = 5.0
+        passed = True
+        notes = "Inferências devidamente rastreadas a fatos e premissas declaradas."
+
+    return (
+        CriterionScore(
+            criterion=crit,
+            score=score,
+            evidence=evidence or ["Inference traceability verified."],
+            notes=notes,
+            passed=passed,
+        ),
+        findings,
+    )
+
+
+def evaluate_recommendation_grounding(
+    session: Session,
+) -> tuple[CriterionScore, list[EvaluationFinding]]:
+    """Evaluate whether recommendations are grounded in evidence or properly guarded by conditions."""
+    crit = EpistemicCriterion.RECOMMENDATION_GROUNDING
+    findings: list[EvaluationFinding] = []
+    evidence: list[str] = []
+
+    # Check for ungrounded heavy complexity (Kafka, K8s, Sharding) without factual justification or conditional guard
+    ungrounded_recommendations: list[str] = []
+    has_conditional_recommendation = False
+
+    for role, prop in session.proposals.items():
+        prop_text = (prop.solution + " " + prop.rationale).lower()
+        has_conditional = (
+            (hasattr(prop, "epistemic_section") and len(prop.epistemic_section.conditional_recommendations) > 0)
+            or "if " in prop_text and "then " in prop_text
+            or "se " in prop_text and "então " in prop_text
+        )
+        if has_conditional:
+            has_conditional_recommendation = True
+            evidence.append(f"{role.value} employs conditional recommendations to guard complex components.")
+
+        # If proposal recommends Kafka, Kubernetes, or multi-region without condition and without high throughput fact
+        is_heavy = any(k in prop_text for k in ("kafka", "kubernetes", "k8s", "sharding", "multi-region"))
+        has_throughput_fact = False
+        if session.problem_context:
+            ctx_facts_text = " ".join(f.description for f in session.problem_context.facts).lower()
+            has_throughput_fact = any(k in ctx_facts_text for k in ("1000 req", "1200 req", "500 req", "alta vazão", "1.200"))
+
+        if is_heavy and not has_throughput_fact and not has_conditional:
+            ungrounded_recommendations.append(
+                f"{role.value} recommends heavy infrastructure without factual context evidence or conditional guardrails (IF ... THEN ...)."
+            )
+
+    # Check DecisionRecord
+    if session.decision_record:
+        if session.decision_record.status == DecisionStatus.INSUFFICIENT_EVIDENCE:
+            evidence.append("DecisionRecord properly emitted INSUFFICIENT_EVIDENCE due to unmeasured critical parameters.")
+        elif session.decision_record.status == DecisionStatus.RECOMMENDED:
+            if session.decision_record.supported_by:
+                evidence.append(f"DecisionRecord explicitly cites supporting facts: {session.decision_record.supported_by}")
+            if session.decision_record.conditional_recommendations:
+                evidence.append(f"DecisionRecord includes {len(session.decision_record.conditional_recommendations)} conditional recommendation(s).")
+
+    if ungrounded_recommendations:
+        for item in ungrounded_recommendations:
+            findings.append(
+                EvaluationFinding(
+                    id="F-EPI-REC-01",
+                    criterion=crit,
+                    severity=Severity.HIGH,
+                    description="Recomendação sem fundamentação: ferramenta de alta complexidade recomendada sem fatos comprobatórios e sem condição de guarda.",
+                    evidence=item,
+                    recommendation="Formular a recomendação no formato CONDITIONAL RECOMMENDATION (IF condição THEN ação).",
+                )
+            )
+        score = 1.5
+        passed = False
+        notes = "Recomendações complexas sem sustentação factual ou guarda condicional."
+    else:
+        score = 5.0
+        passed = True
+        notes = "Recomendações devidamente fundamentadas ou guardadas por condições objetivas."
+
+    return (
+        CriterionScore(
+            criterion=crit,
+            score=score,
+            evidence=evidence or ["Recommendations properly grounded."],
+            notes=notes,
+            passed=passed,
+        ),
+        findings,
+    )
+
+
+def evaluate_epistemic_integrity(
+    session: Session,
+) -> tuple[CriterionScore, list[EvaluationFinding]]:
+    """Composite evaluation measuring overall Epistemic Integrity across all 5 dimensions."""
+    crit = EpistemicCriterion.EPISTEMIC_INTEGRITY
+    all_findings: list[EvaluationFinding] = []
+
+    sub_evaluators = [
+        evaluate_fact_grounding,
+        evaluate_assumption_transparency,
+        evaluate_unknown_visibility,
+        evaluate_inference_traceability,
+        evaluate_recommendation_grounding,
+    ]
+
+    scores: list[float] = []
+    evidence: list[str] = []
+
+    for sub_fn in sub_evaluators:
+        score_obj, f_list = sub_fn(session)
+        scores.append(score_obj.score)
+        all_findings.extend(f_list)
+        tag = "PASS" if score_obj.passed else "FAIL"
+        evidence.append(f"{score_obj.criterion.value}: {score_obj.score:.1f}/5 [{tag}]")
+
+    has_critical_failure = any(f.severity in (Severity.HIGH, Severity.CRITICAL) for f in all_findings)
+    avg_score = round(sum(scores) / len(scores), 1)
+    final_score = min(avg_score, 2.0) if has_critical_failure else avg_score
+    passed = not has_critical_failure and final_score >= 3.0
+
+    integrity_findings: list[EvaluationFinding] = []
+    if not passed:
+        integrity_findings.append(
+            EvaluationFinding(
+                id="F-EPI-INT-01",
+                criterion=crit,
+                severity=Severity.HIGH,
+                description="Integridade epistêmica geral comprometida por violações de premissas, fatos ou incógnitas.",
+                evidence=f"Scores das dimensões: {avg_score:.1f}/5. Falha crítica identificada: {has_critical_failure}.",
+                recommendation="Corrigir as premissas não declaradas, fundamentar recomendações e preservar incógnitas.",
+            )
+        )
+
+    return (
+        CriterionScore(
+            criterion=crit,
+            score=final_score,
+            evidence=evidence,
+            notes="Composite Epistemic Integrity score across 5 specialized dimensions.",
+            passed=passed,
+        ),
+        integrity_findings,
     )

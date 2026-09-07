@@ -60,3 +60,47 @@ def test_synthesis_forbids_recommended_solution() -> None:
             version=1,
             winner="PROPOSAL_A",  # type: ignore[call-arg]
         )
+
+
+def test_synthesis_arguments_coercion_and_strict_schema() -> None:
+    """Test that arguments_by_alternative handles both dict and list, and produces a valid strict schema."""
+    from openai.lib._pydantic import to_strict_json_schema
+    from schemas.synthesis import AlternativeArguments
+
+    # 1. Coercion from dict
+    syn_dict = DeliberationSynthesis(
+        artifact_id="SYN-004",
+        version=1,
+        arguments_by_alternative={"PROP_1": ["arg1", "arg2"]},
+    )
+    assert len(syn_dict.arguments_by_alternative) == 1
+    assert syn_dict.arguments_by_alternative[0].alternative_id == "PROP_1"
+    assert syn_dict.arguments_by_alternative[0].arguments == ["arg1", "arg2"]
+    assert syn_dict.arguments_dict == {"PROP_1": ["arg1", "arg2"]}
+
+    # 2. Direct list of AlternativeArguments
+    syn_list = DeliberationSynthesis(
+        artifact_id="SYN-005",
+        version=1,
+        arguments_by_alternative=[
+            AlternativeArguments(alternative_id="PROP_2", arguments=["arg3"])
+        ],
+    )
+    assert len(syn_list.arguments_by_alternative) == 1
+    assert syn_list.arguments_dict == {"PROP_2": ["arg3"]}
+
+    # 3. Strict schema generation for OpenAI Structured Outputs
+    strict_schema = to_strict_json_schema(DeliberationSynthesis)
+    assert strict_schema["type"] == "object"
+    assert strict_schema["additionalProperties"] is False
+    # Check that all keys in properties are in required
+    props = strict_schema["properties"]
+    reqs = set(strict_schema["required"])
+    for prop in props:
+        assert prop in reqs, f"Property {prop} must be in required"
+    # Ensure arguments_by_alternative is an array of $defs/AlternativeArguments
+    assert strict_schema["properties"]["arguments_by_alternative"]["type"] == "array"
+    assert "$defs" in strict_schema
+    assert "AlternativeArguments" in strict_schema["$defs"]
+    assert strict_schema["$defs"]["AlternativeArguments"]["additionalProperties"] is False
+

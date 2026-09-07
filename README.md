@@ -101,65 +101,139 @@ O protocolo do comitê opera como uma máquina de deliberação estruturada de 7
 │   ├── message-protocol.md     # Envelopes de mensagem, catálogo de eventos e schemas
 │   ├── test-scenarios.md       # 5 cenários de teste conceituais do comportamento da engine
 │   ├── decision-model.md       # Modelo de rastreabilidade (13 perguntas) e formato de ADR
-│   └── schema-model.md         # Arquitetura dos contratos tipados, invariantes e JSON Schema
+│   ├── schema-model.md         # Arquitetura dos contratos tipados, invariantes e JSON Schema
+│   ├── evaluation-framework.md # Framework de avaliação analítica (12 critérios + 6 epistêmicos)
+│   ├── llm-provider.md         # Abstração de provedores LLM (Gemini, OpenAI, Mock)
+│   ├── epistemic-discipline.md # Diretrizes, taxonomia e avaliação de Disciplina Epistêmica
+│   └── cli.md                  # Interface interativa CLI, comandos e diálogo humano
 ├── src/                        # Código-fonte da orquestração, agentes, evaluation e LLM
 │   └── committee/
 │       ├── agents/             # Agentes especializados executáveis
-│       ├── evaluation/         # Framework de avaliação deliberativa (12 critérios)
-│       ├── llm/                # Abstração de LLM, Mock e Google Gemini Provider
+│       ├── cli/                # Interface CLI interativa, comandos, UI e renderizador Unicode
+│       ├── evaluation/         # Framework de avaliação deliberativa (12 critérios + 6 epistêmicos)
+│       ├── llm/                # Abstração agnóstica de LLM (Mock, Gemini, OpenAI)
 │       ├── orchestration/      # AgentRunner, ContextBuilder e Orchestrator
 │       ├── event_store.py      # Event Store SQLite/WAL append-only
 │       └── state_machine.py    # Máquina de estados finitos e quality gates
 ├── agents/                     # Prompts declarativos em Markdown para cada agente
-├── schemas/                    # Contratos tipados em Pydantic v2 e validações
-├── tests/                      # Suíte de testes automatizados (unitários, evaluation, llm)
-├── scripts/                    # Scripts utilitários e smoke tests
+├── schemas/                    # Contratos tipados em Pydantic v2 e validações epistêmicas
+├── tests/                      # Suíte de testes automatizados (245+ testes)
+│   └── cli/                    # Testes unitários e negativos da interface CLI
+├── scripts/                    # Scripts utilitários, CLI executável e smoke tests
 └── decisions/                  # Registro das deliberações e decisões geradas
 ```
 
 ---
 
-## 6. Integração com Provedores LLM (Google Gemini)
+## 6. Integração com Provedores LLM (OpenAI e Google Gemini)
 
-O AI Committee integra o **Google Gemini** como provedor de LLM através da biblioteca oficial `google-genai` com **Structured Output** compulsório validado por schemas Pydantic (sem parsing por regex).
+O AI Committee suporta múltiplos provedores reais de LLM mantendo arquitetura agnóstica através da abstração `LLMProvider`:
+* **OpenAI**: Via SDK oficial `openai>=3.8.0`, utilizando primordialmente a **Responses API** e **Structured Outputs** nativos com schemas Pydantic estritos (`strict: True`).
+* **Google Gemini**: Via SDK oficial `google-genai`, utilizando esquemas adaptados via `clean_schema_for_gemini()`.
+* **Mock**: Provedor determinístico offline para testes e validação das 7 fases sem custos de API.
 
 ### 6.1. Configuração de Variáveis de Ambiente
 
-Para utilizar o provedor real do Gemini, configure a chave de API no seu terminal:
-
+Para utilizar a OpenAI:
 ```bash
-export GEMINI_API_KEY="sua-chave-de-api-aqui"
+export OPENAI_API_KEY="sk-..."
+export LLM_PROVIDER="openai"            # Default: gemini
+export OPENAI_MODEL="gpt-4o"            # Default: gpt-4o
+export OPENAI_TIMEOUT_SECONDS="60.0"    # Default: 60.0
 ```
 
-Variáveis opcionais de configuração:
+Para utilizar o Google Gemini:
 ```bash
-export LLM_PROVIDER="gemini"            # Default: gemini
-export GEMINI_MODEL="gemini-2.5-flash"   # Default: gemini-2.5-flash
+export GEMINI_API_KEY="AIza..."
+export LLM_PROVIDER="gemini"
+export GEMINI_MODEL="gemini-flash-latest" # Default: gemini-flash-latest
 export GEMINI_TIMEOUT_SECONDS="60.0"     # Default: 60.0
 ```
 
-> **Aviso de Segurança**: Nunca comite chaves de API no código. O AI Committee aplica mascaramento compulsório em logs e sanitização automática de mensagens de erro para evitar vazamento de credenciais.
+Para sobrescrever o modelo ativo independentemente do provedor:
+```bash
+export LLM_MODEL="gpt-4o-mini"          # Sobrescreve o default do provider ativo
+```
 
-### 6.2. Smoke Test Controlado
+> **Aviso de Segurança**: Chaves de API nunca são commitadas nem exibidas em logs. O sistema aplica mascaramento compulsório (`sk-p...2345` / `AIza...3210`) e sanitização automática de segredos em mensagens de erro e exceções.
 
-Para verificar a comunicação com o Gemini de forma isolada (executando apenas o `ArchitectAgent` sem persistir sessões no Event Store):
+### 6.2. Smoke Tests Controlados
+
+Para verificar a comunicação com um provedor de forma isolada (executando apenas o `ArchitectAgent` sem persistir sessões no Event Store):
 
 ```bash
-export GEMINI_API_KEY="sua-chave-de-api-aqui"
+# Smoke Test Epistemic Discipline (Mock determinístico)
+PYTHONPATH=. .venv/bin/python scripts/smoke_test_epistemic.py --mock
+
+# Smoke Test Epistemic Discipline (OpenAI real)
+export OPENAI_API_KEY="sk-..."
+PYTHONPATH=. .venv/bin/python scripts/smoke_test_epistemic.py
+
+# Smoke Test OpenAI
+export OPENAI_API_KEY="sk-..."
+PYTHONPATH=. .venv/bin/python scripts/smoke_test_openai.py
+
+# Smoke Test Google Gemini
+export GEMINI_API_KEY="AIza..."
 PYTHONPATH=. .venv/bin/python scripts/smoke_test_gemini.py
 ```
 
-### 6.3. Execução de Testes
+### 6.3. Execução de Testes Automatizados
 
 ```bash
-# Executar todos os testes determinísticos (sem consumo de API nem custo de tokens)
+# Executar todos os testes da suíte determinística (200 testes coletados)
 PYTHONPATH=. .venv/bin/pytest -v
 
-# Executar testes unitários do provedor Gemini (com mocks e simulação de retry/timeout)
+# Executar testes da camada de Disciplina Epistêmica
+PYTHONPATH=. .venv/bin/pytest -v tests/test_epistemic_schemas.py tests/test_epistemic_discipline.py
+
+# Executar testes dos 14 cenários de benchmark
+PYTHONPATH=. .venv/bin/pytest -v tests/evaluation/test_scenarios.py
+
+# Executar testes unitários do provedor OpenAI
+PYTHONPATH=. .venv/bin/pytest -v tests/test_openai_provider.py
+
+# Executar testes de substituição agnóstica de provedores
+PYTHONPATH=. .venv/bin/pytest -v tests/test_provider_substitution.py
+
+# Executar testes unitários do provedor Gemini
 PYTHONPATH=. .venv/bin/pytest -v tests/test_gemini_provider.py
 
-# Executar teste de integração real opt-in (com chamada à API do Gemini)
-RUN_LIVE_LLM_TESTS=1 GEMINI_API_KEY="sua-chave" PYTHONPATH=. .venv/bin/pytest -v tests/integration/test_gemini_live.py
+# Executar testes de integração reais opt-in
+RUN_LIVE_LLM_TESTS=1 OPENAI_API_KEY="sk-..." PYTHONPATH=. .venv/bin/pytest -v tests/integration/test_openai_live.py
+RUN_LIVE_LLM_TESTS=1 GEMINI_API_KEY="AIza..." PYTHONPATH=. .venv/bin/pytest -v tests/integration/test_gemini_live.py
 ```
 
-Consulte [docs/llm-provider.md](docs/llm-provider.md) para detalhes da arquitetura de LLM, adaptação de schemas e telemetria.
+Consulte [docs/epistemic-discipline.md](docs/epistemic-discipline.md) para detalhes da taxonomia epistêmica, critérios analíticos e mandates anti-sofisticação por padrão.
+Consulte [docs/llm-provider.md](docs/llm-provider.md) para detalhes da arquitetura de provedores, Responses API, taxonomia de erros e telemetria.
+
+---
+
+## 7. Interface Interativa CLI
+
+O AI Committee oferece uma interface interativa de terminal (`scripts/run_committee.py`) com renderização em caracteres Unicode e suporte completo a controle humano (*Human-in-the-Loop*):
+
+```bash
+# Executar modo demonstração (cenário pronto com Mock offline)
+PYTHONPATH=. .venv/bin/python scripts/run_committee.py --example --mock
+
+# Executar modo interativo (com entrada manual do problema)
+PYTHONPATH=. .venv/bin/python scripts/run_committee.py --mock
+
+# Executar com OpenAI em tempo real
+export OPENAI_API_KEY="sk-..."
+export LLM_PROVIDER="openai"
+PYTHONPATH=. .venv/bin/python scripts/run_committee.py
+```
+
+### Comandos Disponíveis na CLI
+* `help`: Exibe o catálogo de comandos.
+* `status`: Exibe o estado atual da FSM e artefatos gerados.
+* `context`: Visualiza o `ProblemContext` ativo (fatos, premissas, restrições).
+* `events`: Exibe a trilha de auditoria append-only gravada no `EventStore`.
+* `pause` / `resume`: Pausa ou retoma o fluxo da deliberação.
+* `contest <id>`: Contesta e rejeita ou modifica uma premissa provisória.
+* `revise`: Rejeita a recomendação formulada e reabre a Fase 1 com novas restrições.
+* `abort`: Cancela e encerra a sessão imediatamente.
+
+Consulte [docs/cli.md](docs/cli.md) para a documentação detalhada da interface interativa.

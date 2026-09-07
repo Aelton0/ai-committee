@@ -5,7 +5,7 @@ from typing import Any
 from pydantic import BaseModel
 from schemas.common import CommitteeRole
 from schemas.decision import DecisionRecord
-from src.committee.agents.base import BaseAgent
+from src.committee.agents.base import BaseAgent, ContextIsolationError
 
 
 class DecisionMakerAgent(BaseAgent):
@@ -24,5 +24,10 @@ class DecisionMakerAgent(BaseAgent):
         return DecisionRecord
 
     def validate_input_context(self, context: dict[str, Any]) -> None:
-        # Decision Maker needs synthesis or minimum context
-        pass
+        forbidden: list[tuple[str, str]] = []
+        allowed_phases = {"PHASE_5_DECISION", "DECISION"}
+        required = {
+            "PHASE_5_DECISION": [("deliberation_synthesis", "problem_context", "problem_statement")],
+            "DECISION": [("deliberation_synthesis", "problem_context", "problem_statement")],
+        }
+        self._validate_context_policy(context, allowed_phases, required, forbidden)

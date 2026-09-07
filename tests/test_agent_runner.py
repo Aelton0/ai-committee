@@ -85,6 +85,6 @@ def test_runner_validates_returned_schema_type() -> None:
         agent = ArchitectAgent()
 
         with pytest.raises(AgentExecutionFailed, match="Expected artifact of type ArchitectProposal"):
-            await runner.run(agent, {"phase": "PHASE_1_DIVERGENCE"})
+            await runner.run(agent, {"phase": "PHASE_1_DIVERGENCE", "problem_statement": "Test problem"})
 
     asyncio.run(_test())

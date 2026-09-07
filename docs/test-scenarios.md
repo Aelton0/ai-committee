@@ -21,7 +21,7 @@ O usuário deseja definir a estratégia de cache para um portal de notícias de 
 [DIVERGENCE] 
   │  (Arquiteto produz PROP-ARCH-001:v1: Redis Cluster multi-AZ com invalidação por eventos)
   │  (Pragmático produz PROP-PRAG-001:v1: ElastiCache Redis Standalone com TTL agressivo)
-  │  (Evento: PROPOSALS_CREATED)
+  │  (Evento: PROPOSAL_CREATED)
   ▼
 [CONFRONTATION] 
   │  (Auditor gera AUDIT-001:v1: Aponta risco de cold cache e SPOF no standalone do Pragmático)
@@ -29,7 +29,7 @@ O usuário deseja definir a estratégia de cache para um portal de notícias de 
   ▼
 [DEFENSE] 
   │  (Arquiteto refina custos; Pragmático adiciona réplica de leitura para mitigar SPOF)
-  │  (Evento: DEFENSES_SUBMITTED ──► Gera Defenses v1 e Propostas v2)
+  │  (Evento: DEFENSE_SUBMITTED ──► Gera Defenses v1 e Propostas v2)
   ▼
 [CONVERGENCE] 
   │  (Facilitador sintetiza matriz de trade-offs sem emitir juízo)
@@ -95,15 +95,12 @@ Discussão sobre arquitetura de telemetria em tempo real para dispositivos de Io
 ### 3.2 Rastreio de Estados e Eventos
 ```
 [DIVERGENCE] ──► Gera Propostas baseadas em streaming contínuo WebSocket/gRPC
-  │  (Evento: PROPOSALS_CREATED)
+  │  (Evento: PROPOSAL_CREATED)
   ▼
 [CONFRONTATION]
   │  (Auditor identifica que a premissa de conectividade contínua é fatal e impraticável no ambiente real)
   │  (Auditor atesta que ambas as propostas falham totalmente por falta de persistência local / store-and-forward)
-  │  (Evento: PHASE_ROLLBACK ──► Registra justificativa técnica do rollback)
-  ▼
-[ROLLED_BACK]
-  │  (Sistema invalida o avanço para a Fase 3; marca propostas v1 como SUPERSEDED_BY_ROLLBACK)
+  │  (Evento: PHASE_ROLLBACK ──► Registra justificativa técnica; arquiva rodada atual como SUPERSEDED_BY_ROLLBACK)
   ▼
 [INVESTIGATION] (ou WAITING_FOR_USER)
   │  (Facilitador adiciona restrição dura de operação offline-first e solicita validação do usuário)
@@ -128,7 +125,7 @@ Escolha de ferramenta de CI/CD para uma equipe de 3 pessoas em um repositório G
 ```
 [DIVERGENCE]
   │  (Ambos convergem de forma independente para a mesma tecnologia base: GitHub Actions)
-  │  (Evento: PROPOSALS_CREATED)
+  │  (Evento: PROPOSAL_CREATED)
   ▼
 [CONFRONTATION]
   │  (Auditor constata que não há divergência de stack; a diferença reside apenas no nível de modularização)

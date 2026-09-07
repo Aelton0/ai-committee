@@ -5,6 +5,7 @@ from typing import Annotated, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from schemas.common import BaseArtifact, CommitteeRole, Confidence, DecisionStatus, Severity
+from schemas.epistemic import ConditionalRecommendation
 
 
 class RejectedAlternative(BaseModel):
@@ -66,6 +67,22 @@ class DecisionRecord(BaseArtifact):
     review_triggers: list[ReviewTrigger] = Field(default_factory=list)
     confidence: Confidence
     information_that_could_change_decision: list[str] = Field(default_factory=list)
+    supported_by: list[str] = Field(
+        default_factory=list,
+        description="IDs or statements of supporting facts/evidence (e.g. ['F1', 'F2'])",
+    )
+    depends_on: list[str] = Field(
+        default_factory=list,
+        description="IDs or statements of critical assumptions underpinning the decision (e.g. ['A1'])",
+    )
+    uncertainties: list[str] = Field(
+        default_factory=list,
+        description="IDs or statements of remaining unknowns/uncertainties (e.g. ['U1'])",
+    )
+    conditional_recommendations: list[ConditionalRecommendation] = Field(
+        default_factory=list,
+        description="Guarded recommendations that apply if uncertain conditions hold true",
+    )
 
     @model_validator(mode="after")
     def validate_decision_status_invariants(self) -> Self:

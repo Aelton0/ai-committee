@@ -27,13 +27,24 @@ class EvaluationCriterion(str, Enum):
     HUMAN_SOVEREIGNTY = "Human Sovereignty"
 
 
+class EpistemicCriterion(str, Enum):
+    """Criteria measuring Epistemic Discipline and ground truth adherence."""
+
+    EPISTEMIC_INTEGRITY = "Epistemic Integrity"
+    FACT_GROUNDING = "Fact Grounding"
+    ASSUMPTION_TRANSPARENCY = "Assumption Transparency"
+    UNKNOWN_VISIBILITY = "Unknown Visibility"
+    INFERENCE_TRACEABILITY = "Inference Traceability"
+    RECOMMENDATION_GROUNDING = "Recommendation Grounding"
+
+
 class EvaluationFinding(BaseModel):
     """Specific finding or deficiency identified during evaluation."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     id: Annotated[str, Field(min_length=1)]
-    criterion: EvaluationCriterion
+    criterion: EvaluationCriterion | EpistemicCriterion
     severity: Severity
     description: Annotated[str, Field(min_length=5)]
     evidence: Annotated[str, Field(min_length=1)]
@@ -54,7 +65,7 @@ class CriterionScore(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    criterion: EvaluationCriterion
+    criterion: EvaluationCriterion | EpistemicCriterion
     score: Annotated[float, Field(ge=0.0, le=5.0)]
     evidence: list[str] = Field(min_length=1)
     severity: Severity | None = None
@@ -76,6 +87,7 @@ class EvaluationSummary(BaseModel):
 
     overall_score: Annotated[float, Field(ge=0.0, le=5.0)]
     criterion_scores: dict[EvaluationCriterion, CriterionScore]
+    epistemic_scores: dict[EpistemicCriterion, CriterionScore] = Field(default_factory=dict)
     strengths: list[str] = Field(default_factory=list)
     weaknesses: list[str] = Field(default_factory=list)
     critical_findings: list[EvaluationFinding] = Field(default_factory=list)
@@ -130,6 +142,13 @@ class EvaluationResult(BaseModel):
         for crit, score_obj in self.summary.criterion_scores.items():
             status_tag = "PASS" if score_obj.passed else "FAIL"
             lines.append(f"  {crit.value:<26} {score_obj.score:.1f}/5  [{status_tag}]")
+
+        if self.summary.epistemic_scores:
+            lines.append("-" * 50)
+            lines.append("EPISTEMIC DISCIPLINE SCORES:")
+            for e_crit, e_score in self.summary.epistemic_scores.items():
+                e_tag = "PASS" if e_score.passed else "FAIL"
+                lines.append(f"  {e_crit.value:<26} {e_score.score:.1f}/5  [{e_tag}]")
 
         if self.summary.critical_findings:
             lines.append("-" * 50)

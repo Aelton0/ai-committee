@@ -32,8 +32,22 @@ class FacilitatorAgent(BaseAgent):
         return DeliberationSynthesis
 
     def validate_input_context(self, context: dict[str, Any]) -> None:
-        # Facilitator MUST NOT decide or receive decision record
-        if "decision_record" in context and context["decision_record"] is not None:
-            raise ContextIsolationError(
-                "Facilitator isolation violated: Facilitator received DecisionRecord."
-            )
+        forbidden = [
+            ("decision_record", "Facilitator isolation violated: Facilitator received DecisionRecord."),
+        ]
+        allowed_phases = {
+            "PHASE_0_INVESTIGATION", "INVESTIGATION", "DRAFT",
+            "PHASE_4_CONVERGENCE", "CONVERGENCE",
+        }
+        required = {
+            "PHASE_0_INVESTIGATION": [("problem_statement", "problem_context")],
+            "INVESTIGATION": [("problem_statement", "problem_context")],
+            "DRAFT": [("problem_statement", "problem_context")],
+            "PHASE_4_CONVERGENCE": [
+                ("architect_defense", "pragmatic_defense", "problem_context", "audit_report", "architect_proposal", "pragmatic_proposal")
+            ],
+            "CONVERGENCE": [
+                ("architect_defense", "pragmatic_defense", "problem_context", "audit_report", "architect_proposal", "pragmatic_proposal")
+            ],
+        }
+        self._validate_context_policy(context, allowed_phases, required, forbidden)

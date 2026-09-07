@@ -10,22 +10,28 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from src.committee.llm.config import LLMConfig, sanitize_secrets_from_text
+from src.committee.llm.exceptions import (
+    ProviderConfigurationError,
+    ProviderError,
+    ProviderResponseError,
+    ProviderTimeoutError,
+)
 from src.committee.llm.provider import LLMCallMetadata, LLMProvider
 
 
-class GeminiError(Exception):
+class GeminiError(ProviderError):
     """Base exception for all Gemini integration errors."""
 
 
-class GeminiConfigurationError(GeminiError):
+class GeminiConfigurationError(GeminiError, ProviderConfigurationError):
     """Raised when configuration or credentials for Gemini are missing or invalid."""
 
 
-class GeminiTimeoutError(GeminiError):
+class GeminiTimeoutError(GeminiError, ProviderTimeoutError):
     """Raised when a request to Gemini times out."""
 
 
-class GeminiAPIError(GeminiError):
+class GeminiAPIError(GeminiError, ProviderResponseError):
     """Raised when the Gemini API returns an error or unparseable response."""
 
 
@@ -34,12 +40,13 @@ def clean_schema_for_gemini(schema: dict[str, Any]) -> dict[str, Any]:
 
     - Replaces OpenAPI 3.1 `exclusiveMinimum: N` with `minimum: N + 1` (integers) or `minimum: N`.
     - Replaces OpenAPI 3.1 `exclusiveMaximum: N` with `maximum: N - 1` (integers) or `maximum: N`.
-    - Strips unsupported schema metadata properties like '$schema'.
+    - Strips unsupported schema properties like '$schema', 'additionalProperties', and 'additional_properties'
+      which the Google Gemini REST API explicitly rejects.
     """
     if isinstance(schema, dict):
         cleaned: dict[str, Any] = {}
         for k, v in schema.items():
-            if k == "$schema":
+            if k in ("$schema", "additionalProperties", "additional_properties"):
                 continue
             elif k == "exclusiveMinimum":
                 if isinstance(v, int):
@@ -128,6 +135,7 @@ class GeminiLLMProvider:
             response_mime_type="application/json",
             response_schema=cleaned_schema,
             http_options=types.HttpOptions(timeout=int(self.timeout * 1000)),
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         )
 
         try:

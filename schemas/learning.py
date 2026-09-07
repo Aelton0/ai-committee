@@ -54,6 +54,23 @@ class ObservedKnowledgeGap(BaseModel):
     recommended_topic: Annotated[str, Field(min_length=1)]
 
 
+class EpistemicLesson(BaseModel):
+    """Pedagogical lesson highlighting epistemological clarity and trade-offs."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    concept: Annotated[str, Field(min_length=3, description="Underlying theoretical concept")]
+    debate_example: Annotated[str, Field(min_length=5, description="Specific occurrence in the deliberation")]
+    epistemic_confusion: Annotated[
+        str,
+        Field(
+            min_length=5,
+            description="Observed confusion, e.g. treating an assumption as an established fact",
+        ),
+    ]
+    study_topic: Annotated[str, Field(min_length=3, description="Recommended theory/practice topic to explore")]
+
+
 class LearningReport(BaseArtifact):
     """Pedagogical synthesis connecting practical choices with core computer science theory."""
 
@@ -61,6 +78,7 @@ class LearningReport(BaseArtifact):
     concepts: Annotated[list[str], Field(min_length=1)]
     concepts_required_to_understand_decision: Annotated[list[str], Field(min_length=1)]
     observed_knowledge_gaps: list[ObservedKnowledgeGap] = Field(default_factory=list)
+    epistemic_lessons: list[EpistemicLesson] = Field(default_factory=list)
     study_questions: Annotated[list[str], Field(min_length=1)]
     learning_path: Annotated[list[LearningPathStep], Field(min_length=1)]
     theory_to_practice_connections: Annotated[list[str], Field(min_length=1)]

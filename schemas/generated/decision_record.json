@@ -26,6 +26,38 @@
       "title": "AcceptedRisk",
       "type": "object"
     },
+    "ConditionalRecommendation": {
+      "additionalProperties": false,
+      "description": "Recommendation guarded by an explicit condition when the underlying need is unproven.",
+      "properties": {
+        "condition": {
+          "description": "Pre-condition, e.g. 'IF peak throughput > 2,000 req/s'",
+          "minLength": 3,
+          "title": "Condition",
+          "type": "string"
+        },
+        "recommendation": {
+          "description": "Guarded proposal, e.g. 'THEN adopt Redis Streams'",
+          "minLength": 3,
+          "title": "Recommendation",
+          "type": "string"
+        },
+        "evidence": {
+          "description": "IDs of facts, assumptions, or inferences underpinning the condition/action",
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "condition",
+        "recommendation"
+      ],
+      "title": "ConditionalRecommendation",
+      "type": "object"
+    },
     "Confidence": {
       "description": "Confidence levels for assessments and recommendations.",
       "enum": [
@@ -286,6 +318,38 @@
         "type": "string"
       },
       "title": "Information That Could Change Decision",
+      "type": "array"
+    },
+    "supported_by": {
+      "description": "IDs or statements of supporting facts/evidence (e.g. ['F1', 'F2'])",
+      "items": {
+        "type": "string"
+      },
+      "title": "Supported By",
+      "type": "array"
+    },
+    "depends_on": {
+      "description": "IDs or statements of critical assumptions underpinning the decision (e.g. ['A1'])",
+      "items": {
+        "type": "string"
+      },
+      "title": "Depends On",
+      "type": "array"
+    },
+    "uncertainties": {
+      "description": "IDs or statements of remaining unknowns/uncertainties (e.g. ['U1'])",
+      "items": {
+        "type": "string"
+      },
+      "title": "Uncertainties",
+      "type": "array"
+    },
+    "conditional_recommendations": {
+      "description": "Guarded recommendations that apply if uncertain conditions hold true",
+      "items": {
+        "$ref": "#/$defs/ConditionalRecommendation"
+      },
+      "title": "Conditional Recommendations",
       "type": "array"
     }
   },

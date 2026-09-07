@@ -13,7 +13,8 @@
         "hidden_costs",
         "fragile_assumptions",
         "overengineering",
-        "underengineering"
+        "underengineering",
+        "epistemic_risk"
       ],
       "title": "AuditCategory",
       "type": "string"

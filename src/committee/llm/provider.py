@@ -15,6 +15,7 @@ class LLMCallMetadata:
     input_tokens: int | None = None
     output_tokens: int | None = None
     total_tokens: int | None = None
+    request_id: str | None = None
 
 
 @runtime_checkable

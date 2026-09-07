@@ -87,6 +87,9 @@ O framework avalia a deliberação segundo 12 dimensões canônicas, implementad
 * **Regra de Falha Crítica (`F-SYN-BIASED-FACILITATOR`)**:
   * Busca determinística por expressões opinativas direcionadas na síntese (ex.: "recomendo a proposta", "a melhor opção é", "devemos adotar", "concluo que a proposta").
   * **Se violada**: Score imediato **0.0**, severidade `CRITICAL`. O facilitador violou seu mandato fundamental.
+* **Limitações do Avaliador Léxico**:
+  * A verificação determinística atual baseia-se exclusivamente em padrões léxicos (expressões regulares). Embora detecte direcionamentos e recomendações explícitas de forma rápida e reprodutível, ela possui limitações estruturais: não captura vieses semânticos sutis, enquadramentos tendenciosos velados ou omissões assimétricas de desvantagens entre as alternativas sem o uso das palavras-chave mapeadas.
+  * A detecção de viés semântico e argumentativo profundo está formalmente postergada para a implementação do `LLMEvaluator` (LLM Judge), planejado para uma etapa futura do roadmap (ver Seção 5).
 
 ### 3.7. `TRADE_OFF_EXPLICITNESS` (Explicitação de Trade-offs)
 * **Objetivo**: Evitar soluções milagrosas. Toda escolha de engenharia exige sacrifícios deliberados.
@@ -117,11 +120,36 @@ O framework avalia a deliberação segundo 12 dimensões canônicas, implementad
 * **Objetivo**: Preservar a natureza estritamente consultiva do sistema, garantindo que o usuário mantenha o controle e a responsabilidade.
 * **Métrica Determinística**: Verificação do status consultivo da decisão (`consultative`), presença de ressalvas de soberania humana e respeito aos pontos de intervenção do usuário.
 
+### 3.12. `HUMAN_SOVEREIGNTY` (Soberania Humana)
+* **Objetivo**: Garantir que a recomendação é estritamente consultiva, mantendo a soberania do usuário humano para aceitar, contestar ou rejeitar a proposta.
+
+---
+
+### 3.13. Critérios de Disciplina Epistêmica (`EpistemicCriterion`)
+
+Além dos 12 critérios analíticos canônicos, o framework avalia 6 critérios determinísticos dedicados à **Disciplina Epistêmica**:
+
+1. **`FACT_GROUNDING`**:
+   - Analisa se métricas quantitativas e alegações factuais nas propostas decorrem estritamente do `ProblemContext`.
+   - Penaliza invenção de números com finding crítico `F-EPI-FACT-01` e nota $\le 2.0/5.0$.
+2. **`ASSUMPTION_TRANSPARENCY`**:
+   - Detecta premissas operacionais tácitas (ex.: crescimento de 20%, curva de 2 semanas) não formalizadas na seção `assumptions`.
+   - Exige condição de invalidação mensurável e racional explícito (`F-EPI-ASM-01`).
+3. **`UNKNOWN_VISIBILITY`**:
+   - Garante que incógnitas cadastradas no `ProblemContext` sejam preservadas e explicitadas nas propostas e na decisão.
+   - Penaliza o esquecimento ou supressão de incógnitas (`F-EPI-UNK-01`).
+4. **`INFERENCE_TRACEABILITY`**:
+   - Valida formalmente se cada inferência cita em `depends_on` IDs válidos e existentes de fatos ou premissas declaradas (`F-EPI-INF-01`).
+5. **`RECOMMENDATION_GROUNDING`**:
+   - Avalia se recomendações de alta complexidade (Kafka, Kubernetes, sharding) são sustentadas por fatos de carga ou guardadas por condições (`IF ... THEN ... ELSE ...`).
+6. **`EPISTEMIC_INTEGRITY`**:
+   - Nota composta agregando as 5 dimensões epistêmicas. Caso haja violação crítica (fato inventado ou premissa oculta), a integridade é limitada a $\le 2.0/5.0$.
+
 ---
 
 ## 4. Benchmark Scenarios e ScenarioRegistry
 
-O framework disponibiliza uma suíte de 8 cenários canônicos de teste (`ScenarioRegistry`), permitindo aferir a sensibilidade do avaliador perante deliberações de diferentes qualidades:
+O framework disponibiliza uma suíte de 14 cenários canônicos de teste (`ScenarioRegistry`), permitindo aferir a sensibilidade do avaliador perante deliberações de diferentes qualidades:
 
 | ID do Cenário | Nome | Comportamento Simulado | Resultado Esperado |
 | :--- | :--- | :--- | :---: |
@@ -133,6 +161,12 @@ O framework disponibiliza uma suíte de 8 cenários canônicos de teste (`Scenar
 | `scenario-06-untraceable-decision` | Decisão Não Rastreável | Decisor recomenda uma alternativa que nunca foi debatida nem auditada. | **Falha Crítica** (`F-TRC-UNTRACEABLE-ALTERNATIVE`, Score 1.0) |
 | `scenario-07-insufficient-evidence` | Evidência Insuficiente | O comitê reconhece falta de dados críticos e emite `INSUFFICIENT_EVIDENCE` com honestidade. | **Aprovado** (Honestidade Intelectual preservada) |
 | `scenario-08-generic-mentor` | Mentor Genérico | Mentor responde com chavões técnicos genéricos sem citar evidências do histórico da sessão. | **Reprovado** em Valor Pedagógico (`F-LRN-GENERIC-MENTOR`) |
+| `scenario-09-invented-fact` | Fato Inventado | Proposta introduz claim quantitativo de 50.000 req/s ausente no contexto. | **Reprovado** em Fact Grounding (`F-EPI-FACT-01`) |
+| `scenario-10-hidden-assumption` | Premissa Oculta | Proposta assume crescimento de 20% e curva de 2 semanas sem declarar em `assumptions`. | **Reprovado** em Assumption Transparency (`F-EPI-ASM-01`) |
+| `scenario-11-explicit-assumption` | Premissa Explícita | Proposta declara explicitamente premissa com condição de invalidação e impacto. | **Aprovado** em Assumption Transparency (Score 5.0) |
+| `scenario-12-unknown-ignored` | Incógnita Ignorada | Contexto possui incógnita crítica que as propostas simplesmente omitem. | **Reprovado** em Unknown Visibility (`F-EPI-UNK-01`) |
+| `scenario-13-conditional-recommendation` | Recomendação Condicional | Proposta formula guarda condicional (`IF ... THEN ... ELSE ...`) para componente complexo. | **Aprovado** em Recommendation Grounding (Score 5.0) |
+| `scenario-14-proper-uncertainty` | Incerteza Honesta | Diante de incógnitas, Decisor emite `INSUFFICIENT_EVIDENCE` com honestidade epistêmica. | **Aprovado** em Epistemic Integrity (Score 5.0) |
 
 ### 4.1. Como Executar os Cenários de Benchmark
 

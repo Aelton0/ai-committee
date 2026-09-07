@@ -97,7 +97,7 @@ def test_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     config = LLMConfig.from_env()
     assert config.provider == "gemini"
     assert config.gemini_api_key is None
-    assert config.gemini_model == "gemini-2.5-flash"
+    assert config.gemini_model == "gemini-flash-latest"
     assert config.gemini_timeout_seconds == 60.0
 
 
@@ -163,13 +163,13 @@ def test_provider_missing_api_key_raises_configuration_error(
 def test_provider_model_selection_and_routing() -> None:
     config = LLMConfig(
         gemini_api_key="AIzaSyDummyKey12345",
-        gemini_model="gemini-2.5-flash",
+        gemini_model="gemini-flash-latest",
         agent_models={"ARCHITECT": "gemini-1.5-pro", "PRAGMATIST": "gemini-1.5-flash"},
     )
     # Default model from config
     mock_client = MagicMock()
     provider_default = GeminiLLMProvider(config=config, client=mock_client)
-    assert provider_default.model == "gemini-2.5-flash"
+    assert provider_default.model == "gemini-flash-latest"
 
     # Explicit override
     provider_custom = GeminiLLMProvider(
@@ -180,35 +180,44 @@ def test_provider_model_selection_and_routing() -> None:
     # Per-agent routing resolution
     assert config.get_model_for_agent("ARCHITECT") == "gemini-1.5-pro"
     assert config.get_model_for_agent("PRAGMATIST") == "gemini-1.5-flash"
-    assert config.get_model_for_agent("AUDITOR_SRE") == "gemini-2.5-flash"
+    assert config.get_model_for_agent("AUDITOR_SRE") == "gemini-flash-latest"
 
 
 def test_provider_repr_does_not_leak_key() -> None:
     secret = "AIzaSyDummySecretKey123456"
     mock_client = MagicMock()
     provider = GeminiLLMProvider(
-        api_key=secret, model="gemini-2.5-flash", timeout=30.0, client=mock_client
+        api_key=secret, model="gemini-flash-latest", timeout=30.0, client=mock_client
     )
 
     repr_str = repr(provider)
     assert secret not in repr_str
-    assert "GeminiLLMProvider(model='gemini-2.5-flash', timeout=30.0)" == repr_str
+    assert "GeminiLLMProvider(model='gemini-flash-latest', timeout=30.0)" == repr_str
 
 
 # --- 3. Schema Cleaning & Compatibility Tests ---
-def test_clean_schema_exclusive_bounds() -> None:
+def test_clean_schema_exclusive_bounds_and_strips_additional_properties() -> None:
     raw_schema = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
+        "additionalProperties": False,
         "properties": {
             "version": {"type": "integer", "exclusiveMinimum": 0},
             "ratio": {"type": "integer", "exclusiveMaximum": 100},
             "float_ratio": {"type": "number", "exclusiveMaximum": 99.5},
+            "nested": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {"name": {"type": "string"}},
+            },
         },
     }
 
     cleaned = clean_schema_for_gemini(raw_schema)
     assert "$schema" not in cleaned
+    assert "additionalProperties" not in cleaned
+    assert "additional_properties" not in cleaned
+    assert "additionalProperties" not in cleaned["properties"]["nested"]
     assert "exclusiveMinimum" not in cleaned["properties"]["version"]
     assert cleaned["properties"]["version"]["minimum"] == 1
     assert "exclusiveMaximum" not in cleaned["properties"]["ratio"]
@@ -225,6 +234,9 @@ def test_clean_schema_architect_proposal_validates_with_genai_transformer() -> N
     assert sdk_schema is not None
     assert sdk_schema.type == "OBJECT"
     assert "title" in sdk_schema.properties
+    dumped = sdk_schema.model_dump(exclude_none=True)
+    assert "additionalProperties" not in dumped
+    assert "additional_properties" not in dumped
 
 
 # --- 4. Generation & Structured Output Mapping Tests ---
@@ -240,7 +252,7 @@ def test_successful_generation_from_json_text() -> None:
 
         provider = GeminiLLMProvider(
             api_key="AIzaSyDummyKey12345",
-            model="gemini-2.5-flash",
+            model="gemini-flash-latest",
             client=mock_client,
         )
 
@@ -259,7 +271,7 @@ def test_successful_generation_from_json_text() -> None:
         # Verify call parameters sent to generate_content
         mock_client.aio.models.generate_content.assert_awaited_once()
         call_kwargs = mock_client.aio.models.generate_content.call_args.kwargs
-        assert call_kwargs["model"] == "gemini-2.5-flash"
+        assert call_kwargs["model"] == "gemini-flash-latest"
         assert "Migrate database" in call_kwargs["contents"]
         assert call_kwargs["config"].system_instruction == "You are the Architect."
         assert call_kwargs["config"].response_mime_type == "application/json"
@@ -336,7 +348,7 @@ def test_telemetry_recording() -> None:
         )
 
         provider = GeminiLLMProvider(
-            api_key="AIzaSyDummyKey12345", model="gemini-2.5-flash", client=mock_client
+            api_key="AIzaSyDummyKey12345", model="gemini-flash-latest", client=mock_client
         )
 
         await provider.generate(
@@ -346,7 +358,7 @@ def test_telemetry_recording() -> None:
         )
 
         assert provider.last_metadata is not None
-        assert provider.last_metadata.model == "gemini-2.5-flash"
+        assert provider.last_metadata.model == "gemini-flash-latest"
         assert provider.last_metadata.latency_seconds > 0.0
         assert provider.last_metadata.input_tokens == 180
         assert provider.last_metadata.output_tokens == 240
@@ -453,8 +465,9 @@ def test_agent_runner_exhausts_retries_and_raises() -> None:
         runner = AgentRunner(llm_provider=provider, max_retries=2)
         agent = ArchitectAgent()
 
+        valid_ctx = {"phase": "PHASE_1_DIVERGENCE", "problem_statement": "Persistent failure test"}
         with pytest.raises(AgentExecutionFailed) as exc_info:
-            await runner.run(agent, {}, output_schema=ArchitectProposal)
+            await runner.run(agent, valid_ctx, output_schema=ArchitectProposal)
 
         assert "failed after 2 attempts" in str(exc_info.value)
         assert mock_client.aio.models.generate_content.await_count == 2

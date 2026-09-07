@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from schemas.common import BaseArtifact, CommitteeRole, Severity
+from schemas.epistemic import EpistemicSection
 
 
 class EffortLevel(str, Enum):
@@ -60,6 +61,7 @@ class BaseProposal(BaseArtifact):
     future_implications: Annotated[str, Field(min_length=5)]
     assumptions: Annotated[list[str], Field(min_length=1)]
     invalidation_conditions: Annotated[list[str], Field(min_length=1)]
+    epistemic_section: EpistemicSection = Field(default_factory=EpistemicSection)
 
 
 class ArchitectProposal(BaseProposal):

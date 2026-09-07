@@ -40,7 +40,7 @@ def check_api_key() -> str:
         print("    export GEMINI_API_KEY=\"sua-chave-de-api-aqui\"")
         print("    PYTHONPATH=. .venv/bin/python scripts/smoke_test_gemini.py\n")
         print("Opcionalmente, você também pode configurar:")
-        print("    export GEMINI_MODEL=\"gemini-2.5-flash\"  (ou outro modelo suportado)")
+        print("    export GEMINI_MODEL=\"gemini-flash-latest\"  (ou outro modelo suportado)")
         print("    export GEMINI_TIMEOUT_SECONDS=\"60.0\"")
         print("=" * 70)
         sys.exit(1)
@@ -75,7 +75,7 @@ async def run_smoke_test() -> None:
         ],
         constraints=[
             Constraint(id="C1", description="Orçamento mensal adicional máximo de $400", type=ConstraintType.BUDGET, negotiable=False),
-            Constraint(id="C2", description="Equipe de apenas 3 desenvolvedores backend", type=ConstraintType.ORGANIZATIONAL, negotiable=False),
+            Constraint(id="C2", description="Equipe de apenas 3 desenvolvedores backend", type=ConstraintType.TEAM, negotiable=False),
         ],
         assumptions=[
             Assumption(id="A1", description="Pico de tráfego crescerá 20% no próximo trimestre", rationale="Projeção comercial", risk_level=Severity.MEDIUM)
@@ -91,7 +91,7 @@ async def run_smoke_test() -> None:
     print("[2/4] Inicializando ArchitectAgent e AgentRunner...")
     agent = ArchitectAgent()
     provider = GeminiLLMProvider(config=config)
-    runner = AgentRunner(llm_provider=provider, max_retries=2)
+    runner = AgentRunner(llm_provider=provider, max_retries=3, retry_delay_seconds=2.0)
 
     input_context = {
         "session_id": "smoke-test-session",

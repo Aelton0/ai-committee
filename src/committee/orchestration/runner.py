@@ -1,5 +1,4 @@
-"""Agent runner responsible for executing agents with retry handling and schema validation."""
-
+import asyncio
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
@@ -22,9 +21,11 @@ class AgentRunner:
         self,
         llm_provider: LLMProvider,
         max_retries: int = 3,
+        retry_delay_seconds: float = 0.0,
     ) -> None:
         self.llm_provider = llm_provider
         self.max_retries = max_retries
+        self.retry_delay_seconds = retry_delay_seconds
 
     async def run(
         self,
@@ -60,6 +61,8 @@ class AgentRunner:
                 last_error = exc
                 if attempt >= self.max_retries:
                     break
+                if self.retry_delay_seconds > 0:
+                    await asyncio.sleep(self.retry_delay_seconds * attempt)
 
         raise AgentExecutionFailed(
             f"Agent {agent.__class__.__name__} ({agent.role.value}) failed after {self.max_retries} attempts. Last error: {last_error}"
